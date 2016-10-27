@@ -7,14 +7,12 @@
 </li>
 <li><p><strong>dropout</strong><br>　　类似于多个网络，每次随机丢弃一半神经元，最终评估预测时，使用的权值除以2.　　　　</p>
 </li>
-<li><p><strong>more data</strong><br>　　增加训练集样本数，可以有效改善算法性能。　　　　<br>  <img src="../../../../imgs/nnpara/moredata.png" alt="NN vs. SVM">  </p>
+<li><p><strong>more data</strong><br>　　增加训练集样本数，可以有效改善算法性能。　　　　<br>  <img src="../../../../imgs/nnpara/moredata.png" alt="NN vs. SVM">   </p>
 </li>
-<li><p><strong>效果评估</strong><br>  <img src="../../../../imgs/nnpara/overfit.png" alt="防止过拟合的效果评估">  </p>
-<p><strong>3.权重初始化</strong></p>
+<li><p><strong>效果评估</strong><br>  <img src="../../../../imgs/nnpara/overfit.png" alt="防止过拟合的效果评估">   </p>
 </li>
 </ul>
-<hr>
-<pre><code>![](../../../../imgs/nnpara/weight.png)   
+<h2 id="3-权重初始化"><a href="#3-权重初始化" class="headerlink" title=" 3.权重初始化"></a> <strong>3.权重初始化</strong></h2><pre><code>![](../../../../imgs/nnpara/weight.png)   
 </code></pre><h2 id="4-超参数设置"><a href="#4-超参数设置" class="headerlink" title=" 4.超参数设置"></a> <strong>4.超参数设置</strong></h2><p>　　learning rate参数：　　　　<br>    <img src="../../../../imgs/nnpara/hyper1.png" alt=""><br>　　<br>　　Epochs：可以使用验证集，比如10个Epoch准确率没有提升，就终止。从而获取合适的Eoch数目，称之为early stoping。　　　　</p>
 <p>　　可变学习速率：初始时可采用较大学习速率，当验证集的准确性不再提升（如10 Epochs没提高），然后调整为逐步下降如1/10或1/2的较小学习速率，最终变为初始学习速率值的1/128、1/1024或1/1000等。　　　　</p>
 <p>　　正则化参数：开始时关闭正则化，先获取合适的学习速率η。然后再调整规范化参数λ，可以先初始化为λ=1.0，再按照10的倍数进行调整，从而得到合适的λ。　　　　  </p>
