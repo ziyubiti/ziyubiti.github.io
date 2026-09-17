@@ -55,6 +55,8 @@
 </tr>
 </tbody></table>
 <p>　　一句话总结：<strong>两条”Security Mode Command”都不加密，两条”Security Mode Complete”都是各自安全域的第一条加密消息</strong>——前者是钥匙信，后者才是上了锁的第一封信。NAS这把锁锁在UE和AMF之间，AS这把锁锁在空口的PDCP层。</p>
+<h3 id="4-附：5G-SA初始注册完整信令流程图"><a href="#4-附：5G-SA初始注册完整信令流程图" class="headerlink" title="4. 附：5G SA初始注册完整信令流程图"></a>4. 附：5G SA初始注册完整信令流程图</h3><p>　　下面这张图把整个注册流程的17条消息、各阶段的安全状态（明文&#x2F;仅完整性保护&#x2F;完整性+加密）以及两个安全激活分界点的位置都标注了出来（基于3GPP TS 24.501、TS 38.331 &#x2F; TS 33.501）：</p>
+<p><img src="/../../../../imgs/20260916-securitymode/registration-security-flow.png"></p>
 </div><div class="tags"><a href="/tags/5GNR/">5GNR</a></div><div class="post-nav"><a class="next" href="/2026/09/07/3gpp-ran1-126-6g-sync/">6G预研追踪系列：3GPP RAN1 #126次会议6G同步信号及信道讨论总结</a></div><h3 class="comments-title"><i class="fa fa-comments"></i>评论</h3><div id="tcomment"></div><script src="https://cdn.jsdelivr.net/npm/twikoo@1.7.19/dist/twikoo.all.min.js"></script><script>var twikooOptions = {
   envId: 'https://ziyubiti.netlify.app/.netlify/functions/twikoo',
   el: '#tcomment',
