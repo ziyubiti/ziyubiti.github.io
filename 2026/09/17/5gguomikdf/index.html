@@ -8,7 +8,11 @@
 <li><strong>不变之二</strong>：空口PDCP加密&#x2F;完整性。<strong>ZUC(NEA3&#x2F;NIA3)本就是3GPP标准算法</strong>，主流基站与终端原生支持，SMC协商选定即可。</li>
 </ul>
 <p>　　需要强调的是：<strong>信令流程完全不变</strong>——NAS&#x2F;AS Security Mode Command的协商流程、加密激活分界点与标准方案一致，改造只影响”算法选择”这一层。</p>
-<h3 id="2-密钥派生链路：第1层到第5层"><a href="#2-密钥派生链路：第1层到第5层" class="headerlink" title="2. 密钥派生链路：第1层到第5层"></a>2. 密钥派生链路：第1层到第5层</h3><p>　　<strong>第1层 USIM卡</strong>（SIM卡芯片内部）：根密钥K固化不变；5G AKA主认证国密化，在卡安全域内运行国密 f1<del>f5，输出128bit的CK&#x2F;IK；SUCI生成改用SM2加密MSIN。<strong>第2层 UE侧协议栈</strong>（不在卡内）：由CK&#x2F;IK经SM3-HMAC派生K_ausf，再含SUPI派生K_amf，NAS加密&#x2F;完整性密钥用ZUC原生支持。<strong>第3层 核心网</strong>（AUSF&#x2F;UDM&#x2F;AMF&#x2F;SEAF）：这是改造重点区域——UDM存储国密根密钥K、运行国密f1</del>f5生成RAND&#x2F;AUTN&#x2F;CK&#x2F;IK&#x2F;XRES、SIDF模块用SM2私钥解密SUCI还原SUPI；AUSF完成鉴权校验、用SM3-HMAC派生K_ausf、HXRES改用SM3计算；AMF派生K_amf&#x2F;K_gNB并通过N2下发；SEAF仅中转认证消息与密钥，改造量最小。<strong>第4层 gNB基站</strong>：由K_gNB派生AS层密钥，PDCP层用ZUC加密&#x2F;完整性保护。<strong>第5层 Uu空口</strong>：SRB1&#x2F;SRB2信令与DRB用户面数据在PDCP层完成ZUC(NEA3)加密 + ZUC(NIA3)完整性保护。</p>
+<h3 id="2-密钥派生链路：第1层到第5层"><a href="#2-密钥派生链路：第1层到第5层" class="headerlink" title="2. 密钥派生链路：第1层到第5层"></a>2. 密钥派生链路：第1层到第5层</h3><p>　　<strong>第1层 USIM卡</strong>（SIM卡芯片内部）：根密钥K固化不变；5G AKA主认证国密化，在卡安全域内运行国密f1~f5，输出128bit的CK&#x2F;IK；SUCI生成改用SM2加密MSIN。</p>
+<p>　　<strong>第2层 UE侧协议栈</strong>（不在卡内）：由CK&#x2F;IK经SM3-HMAC派生K_ausf，再含SUPI派生K_amf，NAS加密&#x2F;完整性密钥用ZUC原生支持。</p>
+<p>　　<strong>第3层 核心网</strong>（AUSF&#x2F;UDM&#x2F;AMF&#x2F;SEAF）：改造重点区域。UDM存储国密根密钥K、运行国密f1~f5生成RAND&#x2F;AUTN&#x2F;CK&#x2F;IK&#x2F;XRES，SIDF模块用SM2私钥解密SUCI还原SUPI；AUSF完成鉴权校验、用SM3-HMAC派生K_ausf、HXRES改用SM3计算；AMF派生K_amf&#x2F;K_gNB并通过N2下发；SEAF仅中转认证消息与密钥，改造量最小。</p>
+<p>　　<strong>第4层 gNB基站</strong>：由K_gNB派生AS层密钥，PDCP层用ZUC加密&#x2F;完整性保护。</p>
+<p>　　<strong>第5层 Uu空口</strong>：SRB1&#x2F;SRB2信令与DRB用户面数据在PDCP层完成ZUC(NEA3)加密 + ZUC(NIA3)完整性保护。</p>
 <h3 id="3-AKA鉴权算法替换细节（f1-f5函数映射）"><a href="#3-AKA鉴权算法替换细节（f1-f5函数映射）" class="headerlink" title="3. AKA鉴权算法替换细节（f1~f5函数映射）"></a>3. AKA鉴权算法替换细节（f1~f5函数映射）</h3><p>　　鉴权层国密化的核心是把MILENAGE的五个函数换成国密实现：</p>
 <ul>
 <li><strong>f1（网络认证码MAC-A）</strong>：由AES-CMAC改为 <strong>SM3-HMAC(K, RAND‖SQN‖AMF)</strong>；</li>
@@ -20,7 +24,7 @@
 <p>　　AUTN认证令牌的构造结构 (SQN⊕AK)‖AMF‖MAC-A 保持不变，仅MAC-A的计算换成SM3-HMAC。由于国密鉴权输出的CK&#x2F;IK仍为128bit，<strong>下游K_seaf&#x2F;K_ausf的派生接口不需要改动</strong>。</p>
 <h3 id="4-USIM卡涉及范围：只有两个环节要换卡"><a href="#4-USIM卡涉及范围：只有两个环节要换卡" class="headerlink" title="4. USIM卡涉及范围：只有两个环节要换卡"></a>4. USIM卡涉及范围：只有两个环节要换卡</h3><p>　　全链路看下来，<strong>需要更换USIM卡的环节有两个</strong>：①鉴权层把MILENAGE&#x2F;TUAK替换为国密鉴权（SM4+SM3-HMAC）；②SUCI加密从ECIES改为SM2。两者可以合并为一次国密USIM卡更换。</p>
 <p>　　根密钥K、KDF派生、空口ZUC加密、网元间证书均<strong>不涉及SIM卡算法变更</strong>——KDF派生发生在UE协议栈而非卡内，空口ZUC由终端与基站原生支持。</p>
-<p>　　若项目不强制要求鉴权层国密化，可采用**”鉴权保留MILENAGE + KDF&#x2F;空口国密”**的折中方案：完全不需要换SIM卡，改造成本显著降低。</p>
+<p>　　若项目不强制要求鉴权层国密化，可采用”<strong>鉴权保留MILENAGE + KDF&#x2F;空口国密</strong>“的折中方案：完全不需要换SIM卡，改造成本显著降低。</p>
 <h3 id="5-各网元改造程度"><a href="#5-各网元改造程度" class="headerlink" title="5. 各网元改造程度"></a>5. 各网元改造程度</h3><ul>
 <li><strong>UDM（深度改造）</strong>：存储国密根密钥K（国密加密机）、运行国密f1~f5生成鉴权向量、SIDF用SM2私钥解密SUCI、管理用户国密算法能力标识；</li>
 <li><strong>AUSF（中度改造）</strong>：鉴权校验（RES* vs XRES）、SM3-HMAC派生K_ausf、HXRES改用SM3、SM2签名证书替换ECDSA；</li>
