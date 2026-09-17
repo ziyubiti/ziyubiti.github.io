@@ -24,7 +24,7 @@
 </ul>
 <p> 其它修改 网站名称、语言、菜单、视图之类，主要修改根目录下的_config.yml文件和对应主题下的_config.yml文件。  </p>
 <p><strong>本地文件插入</strong><br>观察hexo的文件结构，本地更新的文章和图片都会上传到根目录public文件夹下，分别以 &#x2F;年&#x2F;月&#x2F;日&#x2F;文章名 这样的结构保存，而图片则保存在public文件夹下的 &#x2F;imgs文件夹中。那么在写本地路径的时候，相对路径应该退回到该imgs文件夹下才可以成功链接到图片：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">![图片说明](../../../../imgs/xx.jpg)</span><br></pre></td></tr></table></figure>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">![图片说明](/imgs/xx.jpg)</span><br></pre></td></tr></table></figure>
 
 
 
