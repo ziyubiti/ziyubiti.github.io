@@ -56,7 +56,254 @@
 </tbody></table>
 <p>　　一句话总结：<strong>两条”Security Mode Command”都不加密，两条”Security Mode Complete”都是各自安全域的第一条加密消息</strong>——前者是钥匙信，后者才是上了锁的第一封信。NAS这把锁锁在UE和AMF之间，AS这把锁锁在空口的PDCP层。</p>
 <h3 id="4-附：5G-SA初始注册完整信令流程图"><a href="#4-附：5G-SA初始注册完整信令流程图" class="headerlink" title="4. 附：5G SA初始注册完整信令流程图"></a>4. 附：5G SA初始注册完整信令流程图</h3><p>　　下面这张图把整个注册流程的17条消息、各阶段的安全状态（明文&#x2F;仅完整性保护&#x2F;完整性+加密）以及两个安全激活分界点的位置都标注了出来（基于3GPP TS 24.501、TS 38.331 &#x2F; TS 33.501）：</p>
-<p><img src="/images/20260916-securitymode/registration-security-flow.png" alt="5G SA 初始注册完整信令流程与加密激活点"></p>
+<div style="width:100%;box-sizing:border-box;font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:#f8f9fb;padding:20px 16px 32px;">
+
+<!-- 标题 -->
+<div style="text-align:center;margin-bottom:14px;">
+  <div style="font-size:20px;font-weight:700;color:#1a1a2e;">5G SA 初始注册完整信令流程与加密激活点</div>
+  <div style="font-size:12px;color:#666;margin-top:4px;">基于 3GPP TS 24.501 / TS 38.331 / TS 33.501 · 标注每条消息的承载与安全状态</div>
+</div>
+
+<!-- 图例 -->
+<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:16px;font-size:12px;">
+  <div style="display:flex;align-items:center;gap:5px;background:#fff;padding:5px 10px;border-radius:4px;border:1px solid #e0e0e0;">
+    <span style="display:inline-block;width:14px;height:14px;background:#e8e8e8;border:1px solid #999;border-radius:2px;"></span>
+    <span>明文（无安全）</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:5px;background:#fff;padding:5px 10px;border-radius:4px;border:1px solid #e0e0e0;">
+    <span style="display:inline-block;width:14px;height:14px;background:#fff3cd;border:1px solid #e0a800;border-radius:2px;"></span>
+    <span>仅完整性保护（未加密）</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:5px;background:#fff;padding:5px 10px;border-radius:4px;border:1px solid #e0e0e0;">
+    <span style="display:inline-block;width:14px;height:14px;background:#d4edda;border:1px solid #28a745;border-radius:2px;"></span>
+    <span>完整性 + 加密（NEA+NIA）</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:5px;background:#fff;padding:5px 10px;border-radius:4px;border:1px solid #e0e0e0;">
+    <span style="display:inline-block;width:14px;height:14px;background:#f8d7da;border:1px solid #dc3545;border-radius:2px;"></span>
+    <span>★ 安全激活分界消息</span>
+  </div>
+</div>
+
+<!-- 泳道图主体 -->
+<div style="position:relative;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e0e0e0;">
+
+  <!-- 泳道表头 -->
+  <div style="display:flex;border-bottom:2px solid #333;background:#1a1a2e;color:#fff;font-weight:600;font-size:13px;">
+    <div style="width:42px;text-align:center;padding:10px 0;border-right:1px solid #444;">#</div>
+    <div style="flex:1;text-align:center;padding:10px 0;border-right:1px solid #444;">UE</div>
+    <div style="flex:1;text-align:center;padding:10px 0;border-right:1px solid #444;">gNB</div>
+    <div style="flex:1;text-align:center;padding:10px 0;border-right:1px solid #444;">AMF</div>
+    <div style="flex:1;text-align:center;padding:10px 0;">AUSF / UDM</div>
+  </div>
+
+  <!-- 阶段1: 系统信息与RRC连接 -->
+  <div style="background:#f0f4ff;padding:6px 12px;font-size:12px;font-weight:700;color:#1a3a6e;border-bottom:1px solid #d0d8e8;">阶段 1 · 系统信息获取 + 随机接入 + RRC连接建立（全部明文）</div>
+
+  <!-- msg 1 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:44px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">1</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><span style="font-size:11px;background:#e8e8e8;padding:3px 8px;border-radius:3px;border:1px solid #bbb;">MIB / SIB1 广播</span></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><div style="font-size:11px;color:#555;">← 系统消息</div></div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 2 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:44px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">2</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><div style="font-size:11px;color:#555;">RRC Setup Request →</div></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><span style="font-size:10px;background:#e8e8e8;padding:2px 6px;border-radius:3px;border:1px solid #bbb;">SRB0 · 明文 · CCCH</span></div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 3 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:44px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">3</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><span style="font-size:10px;background:#e8e8e8;padding:2px 6px;border-radius:3px;border:1px solid #bbb;">SRB0 · 明文 · CCCH</span></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><div style="font-size:11px;color:#555;">← RRC Setup</div></div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 4 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:48px;align-items:center;background:#fffbe6;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">4</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><div style="font-size:11px;color:#333;font-weight:600;">RRC Setup Complete<br><span style="font-size:10px;color:#666;">(含 NAS: Registration Request)</span></div></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;flex-direction:column;gap:2px;"><span style="font-size:10px;background:#e8e8e8;padding:2px 6px;border-radius:3px;border:1px solid #bbb;">SRB1 · 明文 · DCCH</span><span style="font-size:10px;color:#c00;">NAS层也明文</span></div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+  <!-- 阶段2: N2转发 -->
+  <div style="background:#f0f4ff;padding:6px 12px;font-size:12px;font-weight:700;color:#1a3a6e;border-bottom:1px solid #d0d8e8;border-top:1px solid #d0d8e8;">阶段 2 · N2 初始消息转发 + 选择 AUSF</div>
+
+  <!-- msg 5 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:44px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">5</div>
+    <div style="flex:1;"></div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><div style="font-size:11px;color:#555;">Initial UE Message →</div></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><span style="font-size:10px;background:#e8e8e8;padding:2px 6px;border-radius:3px;border:1px solid #bbb;">N2接口 · 含Registration Request</span></div>
+    <div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 6 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:44px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">6</div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><div style="font-size:11px;color:#555;">Nausf_Authentication →</div></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><span style="font-size:10px;background:#e8e8e8;padding:2px 6px;border-radius:3px;border:1px solid #bbb;">选择认证服务</span></div>
+  </div>
+
+  <!-- 阶段3: NAS主认证 -->
+  <div style="background:#f0f4ff;padding:6px 12px;font-size:12px;font-weight:700;color:#1a3a6e;border-bottom:1px solid #d0d8e8;border-top:1px solid #d0d8e8;">阶段 3 · NAS 主认证（NAS明文，SRB1承载）</div>
+
+  <!-- msg 7 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:48px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">7</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><span style="font-size:10px;background:#e8e8e8;padding:2px 6px;border-radius:3px;border:1px solid #bbb;">SRB1 · NAS明文</span></div>
+    <div style="flex:1;display:flex;justify-content:center;font-size:10px;color:#999;">透明转发</div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><div style="font-size:11px;color:#555;">← Authentication Request</div></div>
+    <div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 8 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:48px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">8</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><div style="font-size:11px;color:#555;">Authentication Response →</div></div>
+    <div style="flex:1;display:flex;justify-content:center;font-size:10px;color:#999;">透明转发</div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><span style="font-size:10px;background:#e8e8e8;padding:2px 6px;border-radius:3px;border:1px solid #bbb;">SRB1 · NAS明文</span></div>
+    <div style="flex:1;"></div>
+  </div>
+
+  <!-- 阶段4: NAS安全激活 - 关键分界 -->
+  <div style="background:#fff0f0;padding:6px 12px;font-size:12px;font-weight:700;color:#8b0000;border-bottom:1px solid #f0c0c0;border-top:2px solid #dc3545;">★ 阶段 4 · NAS 安全激活（分界点①：NAS信令从此加密）</div>
+
+  <!-- msg 9: NAS SMC -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:56px;align-items:center;background:#fffbe6;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#c00;font-weight:700;">9</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><span style="font-size:10px;background:#fff3cd;padding:2px 6px;border-radius:3px;border:1px solid #e0a800;font-weight:600;">SRB1 · 仅完整性 · 未加密</span></div>
+    <div style="flex:1;display:flex;justify-content:center;font-size:10px;color:#999;">透明转发</div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;flex-direction:column;gap:2px;">
+      <div style="font-size:11px;color:#333;font-weight:700;">← NAS Security Mode Command</div>
+      <div style="font-size:10px;color:#666;">协商 NEA/NIA 算法（如ZUC NEA3/NIA3）</div>
+    </div>
+    <div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 10: NAS SMC Complete - 第一条NAS加密消息 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:56px;align-items:center;background:#f0fff4;border-left:4px solid #28a745;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#155724;font-weight:700;">10</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;flex-direction:column;gap:2px;align-items:flex-end;">
+      <div style="font-size:11px;color:#155724;font-weight:700;">NAS Security Mode Complete →</div>
+      <span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;font-weight:600;">★ 第一条NAS加密消息</span>
+    </div>
+    <div style="flex:1;display:flex;justify-content:center;font-size:10px;color:#999;">透明转发</div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;">SRB1 · 完整性+加密</span></div>
+    <div style="flex:1;"></div>
+  </div>
+
+  <!-- 阶段5: 注册完成 -->
+  <div style="background:#f0f4ff;padding:6px 12px;font-size:12px;font-weight:700;color:#1a3a6e;border-bottom:1px solid #d0d8e8;border-top:1px solid #d0d8e8;">阶段 5 · 注册接受（NAS已加密）</div>
+
+  <!-- msg 11 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:48px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">11</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;">NAS加密</span></div>
+    <div style="flex:1;display:flex;justify-content:center;font-size:10px;color:#999;">透明转发</div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><div style="font-size:11px;color:#555;">← Registration Accept</div></div>
+    <div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 12 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:48px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">12</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><div style="font-size:11px;color:#555;">Registration Complete →</div></div>
+    <div style="flex:1;display:flex;justify-content:center;font-size:10px;color:#999;">透明转发</div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;">NAS加密</span></div>
+    <div style="flex:1;"></div>
+  </div>
+
+  <!-- 阶段6: AS安全激活 - 关键分界 -->
+  <div style="background:#fff0f0;padding:6px 12px;font-size:12px;font-weight:700;color:#8b0000;border-bottom:1px solid #f0c0c0;border-top:2px solid #dc3545;">★ 阶段 6 · AS（空口RRC）安全激活（分界点②：RRC信令+用户面从此加密）</div>
+
+  <!-- msg 13: AS SMC -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:56px;align-items:center;background:#fffbe6;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#c00;font-weight:700;">13</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><span style="font-size:10px;background:#e8e8e8;padding:2px 6px;border-radius:3px;border:1px solid #bbb;font-weight:600;">SRB0 · 明文 · CCCH</span></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;flex-direction:column;gap:2px;">
+      <div style="font-size:11px;color:#333;font-weight:700;">← RRC Security Mode Command</div>
+      <div style="font-size:10px;color:#666;">协商AS层 NEA/NIA 算法</div>
+    </div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 14: AS SMC Complete - 第一条AS加密消息 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:56px;align-items:center;background:#f0fff4;border-left:4px solid #28a745;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#155724;font-weight:700;">14</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;flex-direction:column;gap:2px;align-items:flex-end;">
+      <div style="font-size:11px;color:#155724;font-weight:700;">RRC Security Mode Complete →</div>
+      <span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;font-weight:600;">★ 第一条AS加密消息（SRB1）</span>
+    </div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;">完整性+加密</span></div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+  <!-- 阶段7: SRB2/DRB建立 + 用户面 -->
+  <div style="background:#f0f4ff;padding:6px 12px;font-size:12px;font-weight:700;color:#1a3a6e;border-bottom:1px solid #d0d8e8;border-top:1px solid #d0d8e8;">阶段 7 · SRB2 + DRB 建立 → 用户面数据传输（全部NEA加密+NIA完整性）</div>
+
+  <!-- msg 15 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:48px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">15</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;">SRB1 · 加密</span></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;flex-direction:column;gap:2px;">
+      <div style="font-size:11px;color:#555;">← RRC Reconfiguration</div>
+      <div style="font-size:10px;color:#888;">建立SRB2 + DRB</div>
+    </div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 16 -->
+  <div style="display:flex;border-bottom:1px solid #eee;min-height:48px;align-items:center;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#888;font-weight:600;">16</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;"><div style="font-size:11px;color:#555;">RRC Reconfig Complete →</div></div>
+    <div style="flex:1;display:flex;justify-content:flex-start;padding-left:8px;"><span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;">SRB1 · 加密</span></div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+  <!-- msg 17: 用户面 -->
+  <div style="display:flex;min-height:52px;align-items:center;background:#e8f5e9;">
+    <div style="width:42px;text-align:center;font-size:12px;color:#155724;font-weight:700;">17</div>
+    <div style="flex:1;display:flex;justify-content:flex-end;padding-right:8px;flex-direction:column;gap:2px;align-items:flex-end;">
+      <div style="font-size:12px;color:#155724;font-weight:700;">用户面数据 ↔</div>
+      <span style="font-size:10px;background:#d4edda;padding:2px 6px;border-radius:3px;border:1px solid #28a745;font-weight:600;">DRB · NEA加密 + NIA完整性</span>
+    </div>
+    <div style="flex:1;display:flex;justify-content:center;font-size:11px;color:#28a745;font-weight:600;">PDCP层加密</div>
+    <div style="flex:1;"></div><div style="flex:1;"></div>
+  </div>
+
+</div>
+
+<!-- 底部关键结论 -->
+<div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:12px;">
+  <div style="flex:1;min-width:280px;background:#fff;border-radius:6px;padding:14px;border-left:4px solid #dc3545;">
+    <div style="font-size:13px;font-weight:700;color:#8b0000;margin-bottom:6px;">分界点① NAS加密起点</div>
+    <div style="font-size:12px;color:#333;line-height:1.6;">
+      第9条 <b>NAS Security Mode Command</b>（AMF→UE）本身<b>仅完整性保护、不加密</b>；<br>
+      第10条 <b>NAS Security Mode Complete</b>（UE→AMF）是<b>第一条NAS加密消息</b>，此后所有NAS信令（注册、PDU会话等）均NEA加密+NIA完整性。
+    </div>
+  </div>
+  <div style="flex:1;min-width:280px;background:#fff;border-radius:6px;padding:14px;border-left:4px solid #dc3545;">
+    <div style="font-size:13px;font-weight:700;color:#8b0000;margin-bottom:6px;">分界点② AS空口加密起点</div>
+    <div style="font-size:12px;color:#333;line-height:1.6;">
+      第13条 <b>RRC Security Mode Command</b>（gNB→UE）跑在<b>SRB0上，明文</b>；<br>
+      第14条 <b>RRC Security Mode Complete</b>（UE→gNB）是<b>第一条AS加密消息</b>（SRB1），此后SRB1/SRB2的RRC信令、以及所有DRB用户面数据均在PDCP层NEA加密+NIA完整性。
+    </div>
+  </div>
+</div>
+
+<!-- 补充说明 -->
+<div style="margin-top:12px;background:#fff;border-radius:6px;padding:12px 14px;font-size:11px;color:#666;line-height:1.7;border:1px solid #e0e0e0;">
+  <b>说明：</b>① NAS消息由AMF端到端加密，gNB仅做透明转发（不解密NAS payload）；AS消息由gNB和UE在PDCP层加解密。② 实际网络中UE能力查询（UECapabilityEnquiry/Information）可能穿插在AS SMC前后，不同厂商实现略有差异，但安全激活分界点不变。③ SRB0全程明文、无完整性保护，仅用于RRC连接建立和AS SMC下发。④ NEA0/NIA0为空算法（不加密/不完整性），仅用于特定异常场景或紧急呼叫，正常注册流程不使用。
+</div>
+
+</div>
 </div><div class="tags"><a href="/tags/5GNR/">5GNR</a></div><div class="post-nav"><a class="next" href="/2026/09/07/3gpp-ran1-126-6g-sync/">6G预研追踪系列：3GPP RAN1 #126次会议6G同步信号及信道讨论总结</a></div><h3 class="comments-title"><i class="fa fa-comments"></i>评论</h3><div id="tcomment"></div><script src="https://cdn.jsdelivr.net/npm/twikoo@1.7.19/dist/twikoo.all.min.js"></script><script>var twikooOptions = {
   envId: 'https://ziyubiti.netlify.app/.netlify/functions/twikoo',
   el: '#tcomment',
