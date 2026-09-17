@@ -1576,3 +1576,27 @@ em.search-keyword {
   background: rgba(59, 130, 246, 0.2);
   color: var(--c-text);
 }
+
+/* ========== 彩色导航图标（科技感渐变） ========== */
+#header #nav-menu a i.fa::before {
+  background: linear-gradient(135deg, #334155, #64748b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 1.08em;
+  transition: filter 0.2s ease;
+}
+/* 每个菜单项的专属渐变 */
+#header #nav-menu a i.fa-house::before          { background-image: linear-gradient(135deg, #0284c7, #22d3ee); }
+#header #nav-menu a i.fa-brain::before          { background-image: linear-gradient(135deg, #7c3aed, #e879f9); }
+#header #nav-menu a i.fa-python::before         { background-image: linear-gradient(135deg, #3776ab, #ffd43b); }
+#header #nav-menu a i.fa-globe::before          { background-image: linear-gradient(135deg, #059669, #34d399); }
+#header #nav-menu a i.fa-tower-broadcast::before{ background-image: linear-gradient(135deg, #f43f5e, #fb923c); }
+#header #nav-menu a i.fa-face-laugh::before     { background-image: linear-gradient(135deg, #f59e0b, #f472b6); }
+#header #nav-menu a i.fa-box-archive::before    { background-image: linear-gradient(135deg, #4f46e5, #818cf8); }
+#header #nav-menu a i.fa-user::before           { background-image: linear-gradient(135deg, #0d9488, #2dd4bf); }
+/* 悬停发光 */
+#header #nav-menu a:hover i.fa::before,
+#header #nav-menu a.current i.fa::before {
+  filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.55));
+}
