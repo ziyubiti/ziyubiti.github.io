@@ -1,0 +1,412 @@
+<!DOCTYPE html><html lang="#{config.language}"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content="关注机器学习、人工智能、网络爬虫、数据分析、web技术、无线通信等"><title>Starlink 星上 eNB 的工程实现：把基站搬上天，到底要改什么 | ziyubiti</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=0.1.0"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.min.css"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/grids-responsive-min.css"><link rel="stylesheet" href="/fontawesome/css/all.min.css"><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><meta name="generator" content="Hexo 8.1.2"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">Starlink 星上 eNB 的工程实现：把基站搬上天，到底要改什么</h1><a id="logo" href="/.">ziyubiti</a><p class="description">study hard everyday</p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-house"> 首页</i></a><a href="/categories/AI/"><i class="fa fa-brain"> AI</i></a><a href="/categories/Python/"><i class="fa fa-brands fa-python"> Python</i></a><a href="/categories/Web/"><i class="fa fa-globe"> Web</i></a><a href="/categories/6G/"><i class="fa fa-tower-broadcast"> 6G</i></a><a href="/categories/Funny/"><i class="fa fa-face-laugh"> Funny</i></a><a href="/archives/"><i class="fa fa-box-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">Starlink 星上 eNB 的工程实现：把基站搬上天，到底要改什么</h1><div class="post-meta">Sep 23, 2026<span> | </span><span class="category"><a href="/categories/6G/">6G</a></span><script src="https://vercount.one/js" async></script><span id="busuanzi_container_page_pv"> | <span id="busuanzi_value_page_pv"></span><span> 次阅读</span></span></div><div class="post-content"><p>　　把地面 eNB 搬上卫星，直觉上像是”同一台机器换了个地方”——协议栈不用动，顶多加一套温控和抗辐射。但真正落到工程上，问题会变得具体：<strong>卫星上那台 eNB，和地面上那台，到底是不是一回事？</strong></p>
+<p>　　本文的结论是：<strong>协议栈上层几乎可以照搬，但物理层里所有跟”时间”和”频率”沾边的部分必须重写，另有一整套地面 eNB 根本没有的模块要新建。</strong> 而且最硬的约束不在多普勒补偿算法本身，在一个大多数人想不到的地方——随机接入。</p>
+<p>　　除特别说明外，轨道参数取 360 km 高度、43°&#x2F;53° 双壳层，D2C 下行 1.9 GHz，业务信道 5 MHz（LTE 子载波间隔 15 kHz）；服务门限仰角 30°。</p>
+<h3 id="0-全文速览：本文回答的十二个问题"><a href="#0-全文速览：本文回答的十二个问题" class="headerlink" title="0. 全文速览：本文回答的十二个问题"></a>0. 全文速览：本文回答的十二个问题</h3><table>
+<thead>
+<tr>
+<th>问题</th>
+<th>一句话答案</th>
+<th>节</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>星上 eNB 是地面 eNB 搬上去吗？</td>
+<td>不是。上层协议栈能照搬，PHY 里与时间&#x2F;频率同步相关的部分必须重写</td>
+<td>1</td>
+</tr>
+<tr>
+<td>买一台地面 eNB 改造成星载行不行？</td>
+<td>不行，而且改的不是”一层算法”，是 PHY 前端 + 新增一层频率管理</td>
+<td>1.2</td>
+</tr>
+<tr>
+<td>最先撞墙的是哪一关？</td>
+<td><strong>PRACH</strong>：前导检测的频偏容限差 32 倍，UE 连接入都完不成</td>
+<td>2.1</td>
+</tr>
+<tr>
+<td>上行频偏怎么补？</td>
+<td>两级：波束级粗补（消公共斜坡）+ UE 级精补</td>
+<td>2.2</td>
+</tr>
+<tr>
+<td>预补偿多久刷一次？</td>
+<td><strong>≤ 11 ms</strong>，由过顶处 986 Hz&#x2F;s 的多普勒变化率定的</td>
+<td>2.3</td>
+</tr>
+<tr>
+<td>下行也能逐 UE 补吗？</td>
+<td>专用信道可以；<strong>公共信号（PSS&#x2F;SSS&#x2F;CRS）只能补一个值</strong></td>
+<td>3</td>
+</tr>
+<tr>
+<td>补不干净的那部分怎么办？</td>
+<td>残差 1.5–3 kHz 留给 UE 的 AFC，正好落在它 ±10 ppm 的捕获范围内</td>
+<td>3.3</td>
+</tr>
+<tr>
+<td>时延这边麻烦吗？</td>
+<td>更麻烦：LTE 的 TA 量程只有 668 μs，星地往返 4.47 ms，差 <strong>6.7 倍</strong></td>
+<td>4.1</td>
+</tr>
+<tr>
+<td>怎么解决？</td>
+<td>星上吸收公共分量，而且必须<strong>按波束</strong>设基准——按整星设仍超 1.55 倍</td>
+<td>4.2</td>
+</tr>
+<tr>
+<td>这对架构有什么反作用？</td>
+<td>“一个波束一个小区”不只是 PCI 复用的需要，也是 TA 可管理性的需要</td>
+<td>4.3</td>
+</tr>
+<tr>
+<td>时延刷新周期和多普勒一样吗？</td>
+<td>不一样：<strong>≤ 56 ms</strong>。两个变化率的最大值出现在不同位置</td>
+<td>4.4</td>
+</tr>
+<tr>
+<td>最难的一环是什么？</td>
+<td>不是算多普勒，是<strong>星上的时钟</strong>——它是预报精度的天花板</td>
+<td>6</td>
+</tr>
+</tbody></table>
+<p>　　这十二个问题串起来是同一句话：<strong>把基站搬上天，难点不在”它飞起来了”，在于它脚下的每一寸电磁环境都和地面不一样。</strong></p>
+<h3 id="1-先弄清”搬上天”的到底是什么"><a href="#1-先弄清”搬上天”的到底是什么" class="headerlink" title="1. 先弄清”搬上天”的到底是什么"></a>1. 先弄清”搬上天”的到底是什么</h3><h4 id="1-1-一颗星-一个-eNB：这个粒度从哪来"><a href="#1-1-一颗星-一个-eNB：这个粒度从哪来" class="headerlink" title="1.1 一颗星 &#x3D; 一个 eNB：这个粒度从哪来"></a>1.1 一颗星 &#x3D; 一个 eNB：这个粒度从哪来</h4><p>　　先看这个粒度从哪里来：一颗星 248 个波束，而 LTE 的 Cell ID 字段恰好是 8 bit &#x3D; 256 个槽位——<strong>一颗星正好塞进一个 eNB 的身份空间</strong>。所以”D2C 按一颗星一个 eNB 设计”不是随意划分，是被协议字段宽度框出来的粒度。</p>
+<p>　　这个粒度决定了后面所有的改造范围：<strong>每颗星都是一台独立的、完整的基站</strong>，有自己的时钟、自己的调度器、自己的 248 个小区，以及——这是本文的重点——自己的一套时间和频率补偿机制。</p>
+<h4 id="1-2-星上-eNB-内部：比地面-eNB-多了什么、少了什么"><a href="#1-2-星上-eNB-内部：比地面-eNB-多了什么、少了什么" class="headerlink" title="1.2 星上 eNB 内部：比地面 eNB 多了什么、少了什么"></a>1.2 星上 eNB 内部：比地面 eNB 多了什么、少了什么</h4><p>　　先给结论，再解释。星上 eNB 和地面 eNB 的差异不是均匀分布的，而是<strong>集中在物理层最靠近天线的那一段</strong>：</p>
+<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;max-width:680px;margin:0 auto;"><svg viewBox="0 0 680 352" width="100%" role="img" xmlns="http://www.w3.org/2000/svg"><title>星上 eNB 的分层改造清单</title><desc>从上到下六层：RRC/PDCP/RLC 基本照搬；MAC 调度需增加多普勒与时延梯度信息；PHY 下行需逐 UE 预补偿与公共分量补偿；PHY 上行需两级频偏补偿与 PRACH 检测器重建；同步与时钟层改为星载时钟加星历预报；平台层新增抗辐射与在轨重构。右侧色块表示改动程度。</desc><text x="40" y="26" font-size="14" font-weight="500" fill="#2C2C2A">星上 eNB = 地面 eNB 的协议栈 + 重做的物理层前端 + 一层星历预报</text><text x="40" y="45" font-size="12" fill="#888780">改动量自上而下递增：越靠近天线，越要重做</text><text x="52" y="104" font-size="12" fill="#2C2C2A">RRC / PDCP / RLC</text><text x="196" y="104" font-size="12" fill="#5F5E5A">切换、承载、加密——不关心空口怎么变</text><rect x="536" y="86" width="104" height="24" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/><text x="588" y="98" font-size="12" fill="#085041" text-anchor="middle" dominant-baseline="central">基本照搬</text><line x1="40" y1="122" x2="640" y2="122" stroke="#E8E6E0" stroke-width="0.5"/><text x="52" y="152" font-size="12" fill="#2C2C2A">MAC 调度器</text><text x="196" y="152" font-size="12" fill="#5F5E5A">规则照搬，但要吃进多普勒/时延梯度作为调度约束</text><rect x="536" y="134" width="104" height="24" rx="12" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/><text x="588" y="146" font-size="12" fill="#412402" text-anchor="middle" dominant-baseline="central">小幅改造</text><line x1="40" y1="170" x2="640" y2="170" stroke="#E8E6E0" stroke-width="0.5"/><text x="52" y="200" font-size="12" fill="#2C2C2A">PHY · 下行</text><text x="196" y="200" font-size="12" fill="#5F5E5A">逐 UE 多普勒预补偿 + 公共信号公共分量补偿</text><rect x="536" y="182" width="104" height="24" rx="12" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/><text x="588" y="194" font-size="12" fill="#791F1F" text-anchor="middle" dominant-baseline="central">重写</text><line x1="40" y1="218" x2="640" y2="218" stroke="#E8E6E0" stroke-width="0.5"/><text x="52" y="248" font-size="12" fill="#2C2C2A">PHY · 上行</text><text x="196" y="248" font-size="12" fill="#5F5E5A">两级频偏补偿、PRACH 检测器重建、前导序列重规划</text><rect x="536" y="230" width="104" height="24" rx="12" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/><text x="588" y="242" font-size="12" fill="#791F1F" text-anchor="middle" dominant-baseline="central">重写</text><line x1="40" y1="266" x2="640" y2="266" stroke="#E8E6E0" stroke-width="0.5"/><text x="52" y="296" font-size="12" fill="#2C2C2A">同步与时钟</text><text x="196" y="296" font-size="12" fill="#5F5E5A">星载 GNSS 驯服 + 星历预报（地面靠 GPS/1588）</text><rect x="536" y="278" width="104" height="24" rx="12" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/><text x="588" y="290" font-size="12" fill="#26215C" text-anchor="middle" dominant-baseline="central">全新</text><line x1="40" y1="314" x2="640" y2="314" stroke="#E8E6E0" stroke-width="0.5"/><text x="52" y="338" font-size="12" fill="#2C2C2A">平台</text><text x="196" y="338" font-size="12" fill="#5F5E5A">抗辐射加固 + 在轨可重构（没法上门维修）</text><rect x="536" y="326" width="104" height="24" rx="12" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/><text x="588" y="338" font-size="12" fill="#26215C" text-anchor="middle" dominant-baseline="central">全新</text></svg><p style="font-size:12px;color:#888780;text-align:center;margin:8px 0 0;">图 1　星上 eNB 的分层改造清单：越靠近天线，越要重做</p></div>
+
+<p>　　<strong>为什么协议层能照搬？</strong> 因为 RRC 管的是”连接怎么建立、怎么移动”，PDCP 管的是”加密和头压缩”，RLC 管的是”分段和重传”——它们都不关心电磁环境长什么样。多普勒是 40 kHz 还是 4 Hz，对这三层的代码没有区别。</p>
+<p>　　<strong>为什么物理层不能照搬？</strong> 因为物理层的每一个环节都建立在一个隐含前提上：<strong>收发两端的时间基准和频率基准是稳定的、准的。</strong> 地面 eNB 这个前提由机房里的恒温晶振和 GPS&#x2F;1588 保证；到了 360 km 高的轨道上，时钟要自己扛，而”稳定”的含义变成了”要在以 7.7 km&#x2F;s 移动的同时保持稳定”。</p>
+<p>　　<strong>为什么同步与时钟是”全新”？</strong> 地面 eNB 的同步是”花钱买来的”——机房里有 GPS 天线、有 1588 边界时钟、有恒温晶振。星上这三样都没有：没有 GPS 天线（虽然有 GNSS 接收机，但要考虑在轨可见性与抗干扰）、没有稳定的温度环境（朝阳面和背阳面温差可以达到上百摄氏度）、也没法派人上去换一块晶振。</p>
+<h4 id="1-3-与地面-eNB-的量级差"><a href="#1-3-与地面-eNB-的量级差" class="headerlink" title="1.3 与地面 eNB 的量级差"></a>1.3 与地面 eNB 的量级差</h4><p>　　把差异量化成数字，才会明白为什么不能”改改算法了事”：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>地面 eNB</th>
+<th>星上 eNB</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>与终端的相对速度</td>
+<td>0–500 km&#x2F;h</td>
+<td>27,700 km&#x2F;h（7.70 km&#x2F;s）</td>
+<td>~55 倍</td>
+</tr>
+<tr>
+<td>上行多普勒 @1.9 GHz</td>
+<td>±0.88 kHz（500 km&#x2F;h）</td>
+<td><strong>±40.0 kHz</strong>（30° 仰角）</td>
+<td><strong>45 倍</strong></td>
+</tr>
+<tr>
+<td>多普勒变化率</td>
+<td>10² Hz&#x2F;s 量级</td>
+<td><strong>986 Hz&#x2F;s</strong>（过顶）</td>
+<td>~10 倍，且全程单调</td>
+</tr>
+<tr>
+<td>服务窗口内多普勒跨度</td>
+<td>可忽略</td>
+<td><strong>80 kHz</strong>（+40 → −40）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>往返传播时延</td>
+<td>≈ 0（微秒级抖动）</td>
+<td><strong>2.40–4.47 ms</strong>，单调扫过</td>
+<td>3 个数量级</td>
+</tr>
+<tr>
+<td>时延变化率</td>
+<td>≈ 0</td>
+<td><strong>21.0 μs&#x2F;s</strong>（窗边）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>覆盖半径</td>
+<td>1–30 km</td>
+<td>单波束足迹 71×142 km</td>
+<td>5–10 倍</td>
+</tr>
+<tr>
+<td>频率基准</td>
+<td>GPS&#x2F;1588 + 恒温晶振</td>
+<td>星载 GNSS 驯服 &#x2F; 原子钟</td>
+<td>获取方式完全不同</td>
+</tr>
+</tbody></table>
+<p>　　表里有一行值得单独看：<strong>服务窗口内多普勒跨度 80 kHz。</strong> 这个数字不是”最大频偏”，而是”一次服务过程中终端要经历的总频率落差”。作为对照，3GPP 对基站载波频率精度的要求是 ±0.05 ppm，在 1.9 GHz 上等于 <strong>±95 Hz</strong>——也就是说，卫星在 2.5 分钟里扫过的频率范围，是基站自身频率精度要求的 <strong>842 倍</strong>。</p>
+<h3 id="2-频率：上行接收侧"><a href="#2-频率：上行接收侧" class="headerlink" title="2. 频率：上行接收侧"></a>2. 频率：上行接收侧</h3><h4 id="2-1-第一关就卡在-PRACH"><a href="#2-1-第一关就卡在-PRACH" class="headerlink" title="2.1 第一关就卡在 PRACH"></a>2.1 第一关就卡在 PRACH</h4><p>　　卫星上的频偏补偿算法再精妙，也需要 UE 先成功接入。而随机接入的第一步是 UE 发 PRACH 前导，由 eNB 检测。</p>
+<p>　　LTE 前导的子载波间隔只有 <strong>1.25 kHz</strong>（比业务信道的 15 kHz 小一个数量级，这是为了拿到足够长的序列和更好的覆盖）。前导检测的相关峰在频域上是窄的，<strong>检测器的频偏容限就在 ±1 个前导子载波间隔、也就是 ±1.25 kHz 这个量级</strong>——这也是为什么 LTE 的高速场景设计目标只有 500 km&#x2F;h（换算到 1.9 GHz 是 ±880 Hz）。</p>
+<p>　　卫星在 30° 仰角处的多普勒是 <strong>±40.0 kHz</strong>，需要检测器覆盖的范围是常规设计的 <strong>32 倍</strong>。这个倍数是硬账：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>多普勒 @1.9 GHz</th>
+<th>相对前导容限</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>LTE 高速铁路设计目标（500 km&#x2F;h）</td>
+<td>±880 Hz</td>
+<td>0.7 倍</td>
+</tr>
+<tr>
+<td>星上 eNB 在 30° 仰角门限处</td>
+<td>±39.95 kHz</td>
+<td><strong>32 倍</strong></td>
+</tr>
+<tr>
+<td>星上 eNB 的地平线几何极限</td>
+<td>±46.1 kHz</td>
+<td>37 倍</td>
+</tr>
+</tbody></table>
+<p>　　所以第一个必须重建的模块就是 <strong>PRACH 检测器</strong>：搜索窗要按 ±40 kHz 重设，前导的根序列与循环移位要重新规划（第 5 节展开）。<strong>这一关过不去，后面所有的补偿算法都没有机会运行——UE 连接入都完不成。</strong></p>
+<p>　　有一点可以放心：前导序列本身长度是 800 μs，在这么短的时间里多普勒只会漂移 <strong>0.79 Hz</strong>（986 Hz&#x2F;s × 800 μs），完全可以忽略。<strong>问题不在前导内部，在它整体落在哪个频点上。</strong></p>
+<h4 id="2-2-两级补偿"><a href="#2-2-两级补偿" class="headerlink" title="2.2 两级补偿"></a>2.2 两级补偿</h4><p>　　既然需要覆盖 ±40 kHz，最直接的想法是”把搜索窗做宽 32 倍”。但这样做的代价是相关器复杂度同比例上升——而这只是第一步，后面还有成百上千个 UE 要处理。</p>
+<p>　　实际做法是把补偿分成两级，<strong>先用便宜的手段把公共的那一大块消掉，再让精密的算法只处理残差</strong>：</p>
+<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;max-width:680px;margin:0 auto;"><svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg"><title>上行两级频偏补偿流程</title><desc>UE 上行信号携带约两倍多普勒。第一级由星上按波束公共频率斜坡粗补，消掉大部分公共分量；第二级再对每个 UE 单独精补残余。两级后残差降至百赫兹量级，落入 PRACH 与 PUSCH 的可处理范围。</desc><text x="40" y="26" font-size="14" font-weight="500" fill="#2C2C2A">两级补偿：先用便宜的手段吃掉公共斜坡，再让精密算法只碰残差</text><rect x="40" y="52" width="132" height="52" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="0.5"/><text x="106" y="70" font-size="12" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central">UE 上行信号</text><text x="106" y="88" font-size="12" fill="#A32D2D" text-anchor="middle" dominant-baseline="central">约 2× 多普勒</text><line x1="172" y1="78" x2="214" y2="78" stroke="#B4B2A9" stroke-width="1.5" marker-end="url(#ar)"/><rect x="216" y="46" width="168" height="64" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/><text x="300" y="66" font-size="13" font-weight="500" fill="#633806" text-anchor="middle" dominant-baseline="central">① 波束级粗补</text><text x="300" y="85" font-size="11" fill="#854F0B" text-anchor="middle" dominant-baseline="central">按星历算公共频率斜坡</text><text x="300" y="100" font-size="11" fill="#854F0B" text-anchor="middle" dominant-baseline="central">一次覆盖整个波束</text><line x1="384" y1="78" x2="426" y2="78" stroke="#B4B2A9" stroke-width="1.5" marker-end="url(#ar)"/><rect x="428" y="46" width="172" height="64" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/><text x="514" y="66" font-size="13" font-weight="500" fill="#085041" text-anchor="middle" dominant-baseline="central">② UE 级精补</text><text x="514" y="85" font-size="11" fill="#0F6E56" text-anchor="middle" dominant-baseline="central">对每个 UE 估残余频偏</text><text x="514" y="100" font-size="11" fill="#0F6E56" text-anchor="middle" dominant-baseline="central">PUSCH 上是专用信道</text><line x1="40" y1="134" x2="640" y2="134" stroke="#E8E6E0" stroke-width="0.5"/><text x="40" y="160" font-size="12" fill="#5F5E5A">频偏量级的变化（对数刻度，每 10 倍为一段）：</text><rect x="40" y="172" width="600" height="30" rx="4" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/><text x="52" y="187" font-size="12" fill="#791F1F" dominant-baseline="central">粗补前：±40 kHz —— 位于 PRACH / PUSCH 可处理范围之外</text><rect x="40" y="210" width="368" height="30" rx="4" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/><text x="52" y="225" font-size="12" fill="#412402" dominant-baseline="central">粗补后：束内梯度 1.5–3 kHz</text><rect x="40" y="248" width="62" height="30" rx="4" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/><text x="112" y="263" font-size="11" fill="#085041" dominant-baseline="central">精补后：百 Hz 量级 —— 落入常规检测器容限</text><defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs></svg><p style="font-size:12px;color:#888780;text-align:center;margin:8px 0 0;">图 2　上行两级频偏补偿：把 ±40 kHz 逐步收敛到百 Hz</p></div>
+
+<p>　　这里有个容易忽略的协议细节：LTE 规定 UE 调制载波频率的精度基准是”<strong>相对于从 eNB 接收到的</strong>载波频率”（TS 36.101），而不是标称频率。意思是手机自己的 AFC 已经把下行多普勒学进了本地振荡器，发射时用的是同一个参考——<strong>上行信号天然携带 1 倍多普勒</strong>，到达卫星时因为卫星也在动，叠加成 <strong>2 倍</strong>。星上要校正的是剩下那一半，而且必须显式处理这个 2 倍系数。</p>
+<h4 id="2-3-刷新的节奏由谁定"><a href="#2-3-刷新的节奏由谁定" class="headerlink" title="2.3 刷新的节奏由谁定"></a>2.3 刷新的节奏由谁定</h4><p>　　补偿量算出来不是一劳永逸的——卫星一直在动，多普勒一直在变。刷新周期取多大，取决于”允许多少相位漂移”。</p>
+<p>　　多普勒变化率在<strong>过顶处最大，达到 986 Hz&#x2F;s</strong>（这一点和直觉相反，但看公式就明白：多普勒正比于径向速度，而径向速度在过顶时恰好过零——过零点的斜率最大；窗边虽然径向速度最大，但变化已经趋缓，只有 152 Hz&#x2F;s）。</p>
+<p>　　在刷新间隔 T 内，多普勒会漂移约 k·T，由此累积的相位误差是 2π·k·T²&#x2F;2。要求这个误差不超过 QPSK 解调裕度（取 ±22.5°）：</p>
+<table>
+<thead>
+<tr>
+<th>相位漂移容限</th>
+<th>刷新周期上限</th>
+<th>间隔内多普勒漂移</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>±22.5°</td>
+<td><strong>11.3 ms</strong></td>
+<td>11.1 Hz</td>
+</tr>
+<tr>
+<td>±11.25°（留一倍裕量）</td>
+<td>8.0 ms</td>
+<td>7.9 Hz</td>
+</tr>
+<tr>
+<td>取工程值 <strong>10 ms</strong></td>
+<td>—</td>
+<td>9.9 Hz，累积相位 17.7°</td>
+</tr>
+</tbody></table>
+<p>　　所以星上的多普勒预补偿刷新周期必须落在 <strong>10 ms 量级</strong>——对应 LTE 的 10 个子帧。这比地面 eNB 里任何周期性任务都快。</p>
+<p>　　顺带澄清一个可能的误解：<strong>问题不在子帧内部。</strong> 1 ms 子帧内的多普勒漂移只有 0.99 Hz，相位漂移 0.177°，可以完全忽略。<strong>要紧的是补偿量的绝对精度和它的刷新节奏</strong>，不是单次传输内的稳定性。</p>
+<h3 id="3-频率：下行发送侧"><a href="#3-频率：下行发送侧" class="headerlink" title="3. 频率：下行发送侧"></a>3. 频率：下行发送侧</h3><h4 id="3-1-逐-UE-预补偿"><a href="#3-1-逐-UE-预补偿" class="headerlink" title="3.1 逐 UE 预补偿"></a>3.1 逐 UE 预补偿</h4><p>　　下行比上行多一个自由度：eNB 知道每个 UE 是谁、准备发给谁。所以 <strong>PDSCH 这类专用信道可以逐 UE 预补偿</strong>——发送频率取”标称频率减去该 UE 在当前时刻的多普勒预测值”，UE 收到时正好落在标称频点上。</p>
+<p>　　这里体现出一个前面提过的反转：<strong>地面 eNB 处理频偏是”盲估计”，星上 eNB 是”预报”。</strong> 地面 eNB 不知道 UE 在哪、速度多少，只能从接收信号里估；星上 eNB 的轨道是确定的，用星历可以提前把每个波束、每个时刻的多普勒曲线算出来，直接前馈。</p>
+<h4 id="3-2-公共信号只能补一个值"><a href="#3-2-公共信号只能补一个值" class="headerlink" title="3.2 公共信号只能补一个值"></a>3.2 公共信号只能补一个值</h4><p>　　但下行有一个解不开的矛盾：<strong>PSS&#x2F;SSS&#x2F;CRS 是小区级广播信号，同一个波束里所有 UE 都要能解，所以只能补一个多普勒值。</strong></p>
+<p>　　通常取波束中心（或相当于波束中心的那条视线）。这意味着波束边缘的 UE 一定会有残余频偏：</p>
+<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;max-width:680px;margin:0 auto;"><svg viewBox="0 0 680 290" width="100%" role="img" xmlns="http://www.w3.org/2000/svg"><title>下行公共信号只能补一个多普勒值</title><desc>一条波束足迹示意。公共信号按波束中心取单一补偿值，足迹两端因此残留约 1.5 至 3 kHz 的多普勒差；专用信道可按每个用户分别预补偿，残差接近零。</desc><text x="40" y="26" font-size="14" font-weight="500" fill="#2C2C2A">公共信号只能补一个值，专用信道可以逐个补</text><text x="40" y="45" font-size="12" fill="#888780">30° 仰角处波束足迹 71 × 142 km，两端对卫星的视线方向不同，多普勒自然不同</text><rect x="60" y="72" width="560" height="56" rx="6" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/><line x1="340" y1="72" x2="340" y2="128" stroke="#185FA5" stroke-width="1" stroke-dasharray="4 3"/><rect x="262" y="78" width="156" height="44" rx="6" fill="#FFFFFF" stroke="#185FA5" stroke-width="0.5"/><text x="340" y="92" font-size="12" fill="#0C447C" text-anchor="middle">波束中心</text><text x="340" y="110" font-size="12" fill="#185FA5" text-anchor="middle">取这一个值：+40.0 kHz</text><circle cx="90" cy="100" r="5" fill="#A32D2D"/><circle cx="590" cy="100" r="5" fill="#A32D2D"/><text x="90" y="150" font-size="12" fill="#A32D2D" text-anchor="middle">足迹一端</text><text x="590" y="150" font-size="12" fill="#A32D2D" text-anchor="middle">足迹另一端</text><text x="90" y="168" font-size="12" fill="#791F1F" text-anchor="middle">+38.2 kHz</text><text x="590" y="168" font-size="12" fill="#791F1F" text-anchor="middle">+41.2 kHz</text><line x1="90" y1="184" x2="590" y2="184" stroke="#A32D2D" stroke-width="1"/><path d="M90 184 L97 180 L97 188 Z" fill="#A32D2D"/><path d="M590 184 L583 180 L583 188 Z" fill="#A32D2D"/><text x="340" y="204" font-size="12" fill="#A32D2D" text-anchor="middle">两端相差 3.00 kHz（1.58 ppm，占 15 kHz 子载波间隔的 20%）</text><line x1="40" y1="222" x2="640" y2="222" stroke="#E8E6E0" stroke-width="0.5"/><rect x="60" y="236" width="12" height="12" rx="3" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/><text x="82" y="246" font-size="12" fill="#2C2C2A" dominant-baseline="central">PDSCH（专用信道）：逐 UE 预补偿，残差接近 0</text><rect x="360" y="236" width="12" height="12" rx="3" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/><text x="382" y="246" font-size="12" fill="#2C2C2A" dominant-baseline="central">PSS/SSS/CRS：只能取一个值，边缘必留残差</text><text x="340" y="272" font-size="12" fill="#888780" text-anchor="middle">残差不是工程偷懒，是"所有人必须收到同一个波形"这件事本身决定的</text></svg><p style="font-size:12px;color:#888780;text-align:center;margin:8px 0 0;">图 3　束内多普勒梯度：公共信号为什么赶不掉那 1.5–3 kHz</p></div>
+
+<p>　　束内梯度取多少，取决于量足迹的哪个方向：短边（71 km）两端相差 <strong>1.49 kHz</strong>（0.78 ppm）；长边（142 km）相差 <strong>3.00 kHz</strong>（1.58 ppm）。<strong>这个量级占了 15 kHz 子载波间隔的 10–20%</strong>，不能不管。</p>
+<h4 id="3-3-残差交给-UE-的-AFC-——-这里正好闭环"><a href="#3-3-残差交给-UE-的-AFC-——-这里正好闭环" class="headerlink" title="3.3 残差交给 UE 的 AFC —— 这里正好闭环"></a>3.3 残差交给 UE 的 AFC —— 这里正好闭环</h4><p>　　那么这 1.5–3 kHz 谁来消化？答案是 <strong>UE 自己的 AFC</strong>。</p>
+<p>　　UE 晶振的捕获范围是 <strong>±10 ppm</strong>，在 1.9 GHz 上是 <strong>±19 kHz</strong>。星上把公共分量预补偿掉之后，UE 看到的多普勒只剩束内梯度加上星上时钟误差——几个 kHz 的量级，<strong>恰好落在 UE 能处理的范围里</strong>。</p>
+<p>　　（顺带澄清一个容易混用的区别：±0.1 ppm 是 UE <strong>锁定之后</strong>的调制载波精度要求，±10 ppm 是它的<strong>初始捕获范围</strong>，两个数说的是不同的事。）</p>
+<p>　　<strong>这就是”分层补偿”的由来：不是工程上偷懒，而是物理上做不到逐 UE。</strong> 广播信号的本性决定了它只能补一个值；剩下的差额，只能交给唯一还剩下的那个可编程节点——手机里的 AFC。</p>
+<h3 id="4-时间：TA-量程装不下星地距离"><a href="#4-时间：TA-量程装不下星地距离" class="headerlink" title="4. 时间：TA 量程装不下星地距离"></a>4. 时间：TA 量程装不下星地距离</h3><h4 id="4-1-668-μs-vs-4-47-ms"><a href="#4-1-668-μs-vs-4-47-ms" class="headerlink" title="4.1 668 μs vs 4.47 ms"></a>4.1 668 μs vs 4.47 ms</h4><p>　　频率这一侧靠”预报 + 两级补偿”能解决，时间这一侧更棘手，因为它撞上的是一条<strong>写在协议字段位宽里的硬边界</strong>。</p>
+<p>　　LTE 的定时提前（TA）命令是 11 bit，粒度 16Ts（0.521 μs），最大 1282 → <strong>668 μs</strong>。它对应的设计假设是：<strong>小区半径不超过 100 km</strong>。</p>
+<p>　　而卫星场景下：</p>
+<table>
+<thead>
+<tr>
+<th>量</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>单程时延（星下点）</td>
+<td>1.200 ms</td>
+</tr>
+<tr>
+<td>单程时延（30° 仰角门限）</td>
+<td>2.233 ms</td>
+</tr>
+<tr>
+<td><strong>往返时延</strong></td>
+<td><strong>2.40 – 4.47 ms</strong></td>
+</tr>
+<tr>
+<td>服务窗内单程时延跨度</td>
+<td>1.033 ms</td>
+</tr>
+<tr>
+<td>TA 量程</td>
+<td><strong>668 μs</strong></td>
+</tr>
+<tr>
+<td>超出倍数</td>
+<td><strong>3.6 – 6.7 倍</strong></td>
+</tr>
+</tbody></table>
+<p>　　注意最后两行的对比关系：<strong>UE 需要的最大提前量是 TA 量程的 6.7 倍。</strong> 这不是”精度不够”，是”字段装不下”——UE 就算想配合，它的 11 bit 寄存器也表达不出这个数。</p>
+<h4 id="4-2-按整星设基准还不够"><a href="#4-2-按整星设基准还不够" class="headerlink" title="4.2 按整星设基准还不够"></a>4.2 按整星设基准还不够</h4><p>　　自然的想法是：<strong>星上把公共的那部分自己吸收掉</strong>，只让 UE 补偿残余。星上确实可以这么做——eNB 的接收定时基准相对于发射定时偏移一个量，这个量由星历确定。</p>
+<p>　　但基准取在哪里，结果完全不同：</p>
+<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;max-width:680px;margin:0 auto;"><svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg"><title>三种基准方案下 UE 需自行覆盖的时延跨度</title><desc>横向对比三条时延跨度：不作公共基准补偿时为 2066 微秒，按整星服务圈设基准仍为 2066 微秒，按波束足迹设基准降到 409 微秒。虚线为 668 微秒的 TA 量程上限，只有第三条落在限内。</desc><text x="40" y="26" font-size="14" font-weight="500" fill="#2C2C2A">基准取在哪里，决定 UE 的 TA 字段装不装得下</text><text x="40" y="46" font-size="12" fill="#888780">横条长度 = 必须由 UE 侧 11 bit TA 表达的时延跨度（线性刻度，1 μs ≈ 0.125 px）</text><text x="313.5" y="68" font-size="12" fill="#0F6E56" text-anchor="middle">TA 量程上限 668 μs</text><line x1="313.5" y1="76" x2="313.5" y2="200" stroke="#0F6E56" stroke-width="1.5" stroke-dasharray="5 4"/><text x="40" y="95" font-size="12" fill="#2C2C2A" dominant-baseline="central">① 不作公共基准补偿</text><rect x="230" y="80" width="258" height="30" rx="4" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/><text x="330" y="95" font-size="12" fill="#791F1F" dominant-baseline="central">2066 μs · 超 3.1 倍</text><text x="40" y="135" font-size="12" fill="#2C2C2A" dominant-baseline="central">② 按整星服务圈设基准</text><rect x="230" y="120" width="258" height="30" rx="4" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/><text x="330" y="135" font-size="12" fill="#791F1F" dominant-baseline="central">仍 2066 μs · 超 3.1 倍</text><text x="40" y="175" font-size="12" fill="#2C2C2A" dominant-baseline="central">③ 按波束足迹设基准</text><rect x="230" y="160" width="51" height="30" rx="4" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/><text x="330" y="175" font-size="12" fill="#085041" dominant-baseline="central">409 μs · 装得下，裕量 1.63×</text><line x1="40" y1="222" x2="640" y2="222" stroke="#E8E6E0" stroke-width="0.5"/><text x="40" y="248" font-size="12" fill="#5F5E5A">关键换算：dτ/dψ = v_r·r/(v·c) = 18.4 ms/rad（30° 仰角处）</text><text x="40" y="268" font-size="12" fill="#5F5E5A">波束足迹 71 km 半长 → 单程时延差 ±102 μs → 往返 ±205 μs</text><text x="40" y="288" font-size="12" fill="#888780">UE 补偿 409 μs 需要 786 个 TA 步进，可用 1282 步</text></svg><p style="font-size:12px;color:#888780;text-align:center;margin:8px 0 0;">图 4　三种基准方案：只有"按波束"能把跨度压进 668 μs</p></div>
+
+<p>　　为什么”按整星设基准”没有用？因为<strong>基准只平移了需要补偿量的绝对大小，没有缩小它的跨度</strong>。整星服务圈半径 550 km，从星下点到 30° 仰角，往返时延相差 2066 μs——取中点做基准之后，UE 要覆盖的仍然是 ±1033 μs，是 TA 量程的 1.55 倍。</p>
+<p>　　而按波束设基准，覆盖范围一下缩到 409 μs（取足迹长边 142 km 的保守口径），<strong>装得下了，还有 1.63 倍裕量</strong>。UE 侧需要 786 个 TA 步进，而它有 1282 个。</p>
+<h4 id="4-3-一个反作用：”一束一小区”的第二个理由"><a href="#4-3-一个反作用：”一束一小区”的第二个理由" class="headerlink" title="4.3 一个反作用：”一束一小区”的第二个理由"></a>4.3 一个反作用：”一束一小区”的第二个理由</h4><p>　　这个推导带来一个有意思的后果。</p>
+<p>　　“一个波束一个小区”最常见的理由是<strong>PCI 复用</strong>——D2C 只有 1.4&#x2F;5 MHz 窄带，频率上没法分色，只能靠窄波束做空间隔离。本文的推导给出了第二个理由：<strong>TA 可管理性</strong>。</p>
+<p>　　整星服务圈的时延跨度（2066 μs）装不进 UE 的 TA 字段，但波束足迹的跨度（409 μs）装得下。也就是说，<strong>波束粒度不仅是频率复用的需要，也是时间对齐机制能工作的前提。</strong> 如果把整星做成一个小区，时延维度的补偿在存量手机上根本没法完成。</p>
+<p>　　两条独立的约束指向同一个架构选择，这通常是设计对了的信号。</p>
+<h4 id="4-4-两个变化率互补，两套环路"><a href="#4-4-两个变化率互补，两套环路" class="headerlink" title="4.4 两个变化率互补，两套环路"></a>4.4 两个变化率互补，两套环路</h4><p>　　最后一个关于刷新节奏的问题：TA 要多久更新一次？</p>
+<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;max-width:680px;margin:0 auto;"><svg viewBox="0 0 680 358" width="100%" role="img" xmlns="http://www.w3.org/2000/svg"><title>服务窗内多普勒变化率与时延变化率呈互补分布</title><desc>双纵轴曲线。绿色虚线的多普勒变化率在过顶时达到峰值 986 赫兹每秒，在服务窗边缘降到 152；蓝色实线的时延变化率在服务窗边缘最大 21 微秒每秒，在过顶时降为零。两者峰值出现在相反位置。</desc><line x1="60" y1="28" x2="90" y2="28" stroke="#0F6E56" stroke-width="2.5" stroke-dasharray="6 4"/><text x="96" y="32" font-size="12" fill="#2C2C2A">多普勒变化率（左轴，Hz/s）</text><line x1="330" y1="28" x2="360" y2="28" stroke="#185FA5" stroke-width="2"/><text x="366" y="32" font-size="12" fill="#2C2C2A">时延变化率（右轴，μs/s）</text><line x1="80" y1="90.7" x2="640" y2="90.7" stroke="#D3D1C7" stroke-width="0.5" stroke-dasharray="3 3"/><line x1="80" y1="242.4" x2="640" y2="242.4" stroke="#D3D1C7" stroke-width="0.5" stroke-dasharray="3 3"/><line x1="80" y1="270" x2="640" y2="270" stroke="#888780" stroke-width="0.5"/><text x="74" y="94" font-size="11" fill="#0F6E56" text-anchor="end">986</text><text x="74" y="246" font-size="11" fill="#0F6E56" text-anchor="end">152</text><text x="74" y="274" font-size="11" fill="#5F5E5A" text-anchor="end">0</text><line x1="647" y1="70" x2="647" y2="270" stroke="#185FA5" stroke-width="0.5"/><text x="654" y="74" font-size="11" fill="#185FA5" text-anchor="start">25</text><text x="654" y="274" font-size="11" fill="#185FA5" text-anchor="start">0</text><line x1="95.8" y1="70" x2="95.8" y2="270" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 3"/><line x1="360" y1="70" x2="360" y2="270" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 3"/><line x1="624.2" y1="70" x2="624.2" y2="270" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 3"/><path d="M 95.8 242.4 L 109.0 239.2 L 122.2 235.6 L 135.4 231.5 L 148.6 226.8 L 161.9 221.5 L 175.1 215.5 L 188.3 208.7 L 201.5 201.0 L 214.7 192.4 L 227.9 182.8 L 241.1 172.4 L 254.3 161.2 L 267.5 149.4 L 280.7 137.3 L 294.0 125.4 L 307.2 114.3 L 320.4 104.7 L 333.6 97.1 L 346.8 92.4 L 360.0 90.7 L 373.2 92.4 L 386.4 97.1 L 399.6 104.7 L 412.8 114.3 L 426.0 125.4 L 439.3 137.3 L 452.5 149.4 L 465.7 161.2 L 478.9 172.4 L 492.1 182.8 L 505.3 192.4 L 518.5 201.0 L 531.7 208.7 L 544.9 215.5 L 558.1 221.5 L 571.4 226.8 L 584.6 231.5 L 597.8 235.6 L 611.0 239.2 L 624.2 242.4" fill="none" stroke="#0F6E56" stroke-width="2.5" stroke-dasharray="6 4"/><path d="M 95.8 101.8 L 109.0 104.3 L 122.2 107.2 L 135.4 110.4 L 148.6 113.9 L 161.9 117.9 L 175.1 122.4 L 188.3 127.5 L 201.5 133.2 L 214.7 139.6 L 227.9 146.8 L 241.1 154.8 L 254.3 163.9 L 267.5 173.9 L 280.7 184.9 L 294.0 197.1 L 307.2 210.2 L 320.4 224.2 L 333.6 239.0 L 346.8 254.4 L 360.0 270.0 L 373.2 254.4 L 386.4 239.0 L 399.6 224.2 L 412.8 210.2 L 426.0 197.1 L 439.3 184.9 L 452.5 173.9 L 465.7 163.9 L 478.9 154.8 L 492.1 146.8 L 505.3 139.6 L 518.5 133.2 L 531.7 127.5 L 544.9 122.4 L 558.1 117.9 L 571.4 113.9 L 584.6 110.4 L 597.8 107.2 L 611.0 104.3 L 624.2 101.8" fill="none" stroke="#185FA5" stroke-width="2"/><circle cx="360" cy="90.7" r="3.5" fill="#FFFFFF" stroke="#0F6E56" stroke-width="1.5"/><circle cx="95.8" cy="101.8" r="3.5" fill="#FFFFFF" stroke="#185FA5" stroke-width="1.5"/><circle cx="624.2" cy="101.8" r="3.5" fill="#FFFFFF" stroke="#185FA5" stroke-width="1.5"/><rect x="288" y="64" width="144" height="19" rx="4" fill="#FFFFFF"/><text x="360" y="77" font-size="11" fill="#0F6E56" text-anchor="middle">过顶：多普勒斜率最大</text><text x="360" y="288" font-size="11" fill="#185FA5" text-anchor="middle">过顶：时延变化率归零</text><text x="360" y="314" font-size="12" fill="#5F5E5A" text-anchor="middle">服务窗口内的时间（秒），0 = 卫星过顶</text><text x="95.8" y="330" font-size="11" fill="#888780" text-anchor="middle">−75.5 s</text><text x="624.2" y="330" font-size="11" fill="#888780" text-anchor="middle">+75.5 s</text><text x="360" y="330" font-size="11" fill="#888780" text-anchor="middle">0</text><text x="360" y="346" font-size="11" fill="#888780" text-anchor="middle">两端 = 仰角 30° 门限</text></svg><p style="font-size:12px;color:#888780;text-align:center;margin:8px 0 0;">图 5　两个变化率互补：多普勒在过顶最急，时延在窗边最急</p></div>
+
+<p>　　这张图是本篇最有意思的一处细节。<strong>多普勒变化率和时延变化率的最大值出现在相反的位置：</strong></p>
+<ul>
+<li><strong>多普勒变化率</strong>正比于径向速度的变化率，在过顶时最大（986 Hz&#x2F;s），窗边降到 152 Hz&#x2F;s；</li>
+<li><strong>时延变化率</strong>就是径向速度本身（除以光速），过顶时径向速度过零（<strong>0</strong>），窗边最大（21.0 μs&#x2F;s）。</li>
+</ul>
+<p>　　物理上它们本就是一对导数关系（时延是径向速度的积分），最大值互补是必然的。工程含义是：</p>
+<table>
+<thead>
+<tr>
+<th>补偿项</th>
+<th>刷新周期上限</th>
+<th>约束来自</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>多普勒预补偿（上&#x2F;下行）</td>
+<td><strong>≤ 11 ms</strong></td>
+<td>过顶 986 Hz&#x2F;s</td>
+</tr>
+<tr>
+<td>TA &#x2F; 时延补偿</td>
+<td><strong>≤ 56 ms</strong></td>
+<td>窗边 21.0 μs&#x2F;s（取 1&#x2F;4 CP 裕度）</td>
+</tr>
+<tr>
+<td>波束指向（地固驻留）</td>
+<td>秒级</td>
+<td>电扫能力</td>
+</tr>
+<tr>
+<td>公共基准 &#x2F; 星历</td>
+<td>分钟级</td>
+<td>轨道确定更新</td>
+</tr>
+</tbody></table>
+<p>　　<strong>星上 eNB 需要至少两套不同速率的补偿环路</strong>，快的那套盯频率，慢的那套盯时间。把它们合并成一个周期是行不通的——要么频率那边来不及，要么时间这边白烧算力。</p>
+<h3 id="5-PRACH-的第二个约束：前导规划"><a href="#5-PRACH-的第二个约束：前导规划" class="headerlink" title="5. PRACH 的第二个约束：前导规划"></a>5. PRACH 的第二个约束：前导规划</h3><p>　　回到第 2.1 节留下的尾巴。PRACH 检测器重建，除了要把频偏搜索窗拓宽 32 倍，还有第二个坑：<strong>循环移位配置</strong>。</p>
+<p>　　LTE 前导检测靠的是一条 Zadoff-Chu 序列的循环移位正交性。序列长 839（对应 1.25 kHz 子载波间隔），循环移位的步长 Ncs 对应一个”零相关区”（ZAZ）：<strong>只要两个 UE 的到达时延差落在 ZAZ 之内，eNB 就能用不同的循环移位把它们分开。</strong></p>
+<p>　　地面上，小区半径 1–30 km，Ncs 取小值（比如 13）就够了，此时一条根序列能提供 <strong>64 个</strong>循环移位——也就是 64 个前导，一个小区够用了。</p>
+<p>　　到了波束足迹 71×142 km 的场景，需要覆盖的时延跨度是 205 μs（单程，短边口径）。按 PRACH 的循环移位单位 0.9537 μs 折算：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>需要的 ZAZ</th>
+<th>对应 Ncs</th>
+<th>每根序列可提供的前导数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>地面小区（≤1.25 km）</td>
+<td>12 μs</td>
+<td>13</td>
+<td><strong>64</strong></td>
+</tr>
+<tr>
+<td>波束足迹（71 km 短边）</td>
+<td>≥ 205 μs</td>
+<td>279</td>
+<td><strong>3</strong></td>
+</tr>
+<tr>
+<td>整星服务圈（550 km）</td>
+<td>≥ 1033 μs</td>
+<td>需 1083 &gt; 839</td>
+<td><strong>不可能</strong></td>
+</tr>
+</tbody></table>
+<p>　　最后一行是结论性的：<strong>整星覆盖需要的 ZAZ 超过了序列本身长度，物理上做不到。</strong> 所以前导规划也必须以波束为单位，和上文 TA 的结论一致。</p>
+<p>　　代价是：每个根序列能提供的前导数从 64 掉到 3，<strong>要凑出 64 个前导就需要 22 个根序列</strong>（而不是 1 个）。这会带来两个后果——相邻波束之间要做根序列规划以避免冲突，以及同一波束内前导的碰撞概率上升（可用前导池变小、分配变粗）。</p>
+<p>　　顺带说一句：LTE 高速场景用的”受限集”在这里也帮不上忙——受限集是为 500 km&#x2F;h 量级的多普勒设计的，面对 ±40 kHz 完全没有意义。</p>
+<h3 id="6-时钟：预报精度的天花板"><a href="#6-时钟：预报精度的天花板" class="headerlink" title="6. 时钟：预报精度的天花板"></a>6. 时钟：预报精度的天花板</h3><p>　　到这里，改造清单里的每一项都能靠算法解决，唯独有一项不能——<strong>时钟</strong>。</p>
+<p>　　前面反复说”星上 eNB 最大的优势是它知道自己在哪，可以预报多普勒”。但这句话有一个前提：<strong>预报出来的频率，得真能准确实现在载波上。</strong></p>
+<p>　　把两类误差放在一起看：</p>
+<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;max-width:680px;margin:0 auto;"><svg viewBox="0 0 680 336" width="100%" role="img" xmlns="http://www.w3.org/2000/svg"><title>预报误差的两大来源：时钟与星历</title><desc>横向对数条对比。时钟误差 1 ppm 直接产生 1900 赫兹的载波偏差；星历误差即使达到 100 米，折算到多普勒也只有 0.7 赫兹；3GPP 要求的基站频率精度折算到 1.9 GHz 是 95 赫兹。三者相差约 2600 倍，说明预报精度的天花板是星上时钟而不是星历。</desc><text x="40" y="26" font-size="14" font-weight="500" fill="#2C2C2A">预报精度的天花板是时钟，不是星历</text><text x="40" y="46" font-size="12" fill="#888780">横轴为对数刻度（Hz）：0.1 → 10,000，每 94 px 为一个十倍频程</text><line x1="190" y1="76" x2="190" y2="248" stroke="#888780" stroke-width="0.8"/><line x1="284" y1="76" x2="284" y2="248" stroke="#D3D1C7" stroke-width="0.5" stroke-dasharray="3 3"/><line x1="378" y1="76" x2="378" y2="248" stroke="#D3D1C7" stroke-width="0.5" stroke-dasharray="3 3"/><line x1="472" y1="76" x2="472" y2="248" stroke="#D3D1C7" stroke-width="0.5" stroke-dasharray="3 3"/><line x1="566" y1="76" x2="566" y2="248" stroke="#D3D1C7" stroke-width="0.5" stroke-dasharray="3 3"/><line x1="660" y1="76" x2="660" y2="248" stroke="#D3D1C7" stroke-width="0.5" stroke-dasharray="3 3"/><text x="190" y="266" font-size="11" fill="#888780" text-anchor="middle">0.1</text><text x="284" y="266" font-size="11" fill="#888780" text-anchor="middle">1</text><text x="378" y="266" font-size="11" fill="#888780" text-anchor="middle">10</text><text x="472" y="266" font-size="11" fill="#888780" text-anchor="middle">100</text><text x="566" y="266" font-size="11" fill="#888780" text-anchor="middle">1k</text><text x="660" y="266" font-size="11" fill="#888780" text-anchor="middle">10k</text><text x="40" y="113" font-size="12" fill="#2C2C2A" dominant-baseline="central">星上时钟偏差 1 ppm</text><rect x="190" y="100" width="402" height="26" rx="4" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/><text x="604" y="113" font-size="12" fill="#791F1F" dominant-baseline="central">1900 Hz</text><text x="40" y="163" font-size="12" fill="#2C2C2A" dominant-baseline="central">星历误差 100 m</text><rect x="190" y="150" width="79" height="26" rx="4" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/><text x="290" y="163" font-size="12" fill="#085041" dominant-baseline="central">0.7 Hz</text><text x="40" y="213" font-size="12" fill="#2C2C2A" dominant-baseline="central">3GPP 基站频率精度要求</text><rect x="190" y="200" width="280" height="26" rx="4" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/><text x="482" y="213" font-size="12" fill="#0C447C" dominant-baseline="central">95 Hz</text><line x1="40" y1="286" x2="640" y2="286" stroke="#E8E6E0" stroke-width="0.5"/><text x="40" y="304" font-size="11" fill="#888780">换算口径：频率误差 = 标称频率 × 相对精度；星历误差按切向位置误差 × 角速度折算成距离变化率</text><text x="40" y="324" font-size="12" fill="#A32D2D">同一个量级上，1 ppm 的时钟误差需要星历误差达到 262 km 才能与之相当</text></svg><p style="font-size:12px;color:#888780;text-align:center;margin:8px 0 0;">图 6　时钟误差比星历误差大出约 2600 倍，是预报精度的实际瓶颈</p></div>
+
+<p>　　星上时钟偏差 <strong>1 ppm</strong>，在 1.9 GHz 上直接产生 <strong>1900 Hz</strong> 的载波偏差——<strong>是 15 kHz 子载波间隔的 12.7%</strong>，和束内多普勒梯度（1.5–3 kHz）同一量级，根本压不住。</p>
+<p>　　而星历误差就算到 <strong>100 m</strong>，折算到多普勒误差也只有 <strong>0.7 Hz</strong>。要让它”配得上”1 ppm 的时钟误差，星历得错到 <strong>262 km</strong>——这显然不可能发生。</p>
+<p>　　<strong>所以真正的瓶颈不在”能不能算出多普勒”，而在”星上的频率基准够不够准，让算出来的值能真正还原到载波上”。</strong> 星历可以算得再精确，时钟不准，预报就是空中楼阁。</p>
+<p>　　这也是为什么星载时钟要单独列为一层：3GPP 对基站载波频率精度的要求是 ±0.05 ppm（1.9 GHz 上 ±95 Hz），星上必须靠星载 GNSS 驯服的高稳晶振或星载原子钟去够到这个量级。地面 eNB 的时钟是”买来的”（GPS 天线 + 1588 + 恒温晶振），星上的时钟是”自己做出来的”，而且要在温差上百摄氏度、有辐射的环境里长期稳定。</p>
+<p>　　<strong>一个反过来说的结论：<strong>上面那些多普勒补偿算法，本质上都是在处理”已知且可预报”的量；而时钟误差是</strong>未知的漂移</strong>，只能靠硬件解决，算法一点忙都帮不上。</p>
+<h3 id="7-平台层：三个容易被忽略的前置条件"><a href="#7-平台层：三个容易被忽略的前置条件" class="headerlink" title="7. 平台层：三个容易被忽略的前置条件"></a>7. 平台层：三个容易被忽略的前置条件</h3><p>　　前三节讲的都是信号处理，但把 eNB 送上 360 km 轨道还有三个非射频的前置条件，它们不解决，上面那些算法一行都跑不起来。</p>
+<p><strong>抗辐射与可靠性。</strong> 360 km 属于低轨，虽然在内辐射带下缘附近、辐射环境比中轨温和，但仍需要针对单粒子翻转（SEU）做加固：存储器要加 ECC&#x2F;EDAC，关键寄存器要做三模冗余（TMR），还要有看门狗和定期自检。更要紧的是”坏了没法修”——地面 eNB 一块基带板出问题，换一块就行；星上只能靠冗余设计和在轨重构。这直接决定了星上 eNB 不能用货架商用芯片的裸片，而要用宇航级或经过筛选的器件。</p>
+<p><strong>在轨可重构。</strong> 星座在轨寿命是年为单位，而协议、算法、参数在这期间一定会迭代。所以星上基带普遍走 <strong>SDR（软件无线电）</strong> 路线——用可重配的 FPGA&#x2F;SoC，把物理层做成可加载的镜像。这也是”通用平台 + 卫星 profile”这个说法的由来：<strong>不是把某款地面 eNB 的固件搬上去，而是在通用基站平台上做一份卫星专用的物理层配置</strong>，换掉频偏&#x2F;定时模块、加一层星历预报，而 RRC&#x2F;PDCP&#x2F;RLC&#x2F;MAC 这些上层几乎原样保留。</p>
+<p><strong>功耗与散热。</strong> 地面机房有空调、有市电。星上只有太阳能帆板供电，散热只能靠辐射——真空里没有对流。248 个波束的基带处理是整星最大的耗电项之一，而功耗直接决定散热面积和帆板尺寸。这也是为什么”只对激活波束分配基带”是必需的：满配 248 个波束各自独立基带需要约 <strong>1.9 Gsps</strong> 的处理量，而实际同时激活约 140 个波束，降到 <strong>1.1 Gsps</strong>。</p>
+<h3 id="8-结论：到底改了哪一层"><a href="#8-结论：到底改了哪一层" class="headerlink" title="8. 结论：到底改了哪一层"></a>8. 结论：到底改了哪一层</h3><p>　　回到最初的问题。<strong>把地面 eNB 放到卫星上不是”装上去就能用”，但也不是”全部推倒重来”。</strong> 准确的边界是这样的：</p>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>结论</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>RRC &#x2F; PDCP &#x2F; RLC</td>
+<td><strong>原样保留</strong></td>
+<td>不关心电磁环境</td>
+</tr>
+<tr>
+<td>MAC 调度</td>
+<td>小幅改造</td>
+<td>要把多普勒&#x2F;时延梯度作为调度约束吃进去</td>
+</tr>
+<tr>
+<td>PHY · 下行</td>
+<td><strong>重写</strong></td>
+<td>逐 UE 预补偿；公共信号只能补一个值，残差留给 UE AFC</td>
+</tr>
+<tr>
+<td>PHY · 上行</td>
+<td><strong>重写</strong></td>
+<td>两级频偏补偿；PRACH 检测器搜索窗拓宽 32 倍；前导序列重规划</td>
+</tr>
+<tr>
+<td>定时 &#x2F; TA</td>
+<td><strong>重做</strong></td>
+<td>TA 量程 668 μs 装不下星地往返 4.47 ms，须按波束设基准</td>
+</tr>
+<tr>
+<td>时钟</td>
+<td><strong>全新</strong></td>
+<td>星载 GNSS 驯服 &#x2F; 原子钟，是预报精度的天花板</td>
+</tr>
+<tr>
+<td>平台</td>
+<td><strong>全新</strong></td>
+<td>抗辐射加固 + 在轨可重构 + 功耗散热</td>
+</tr>
+</tbody></table>
+<p>　　如果要给出最有信息量的一句话，是这样的：</p>
+<blockquote>
+<p><strong>星上 eNB 的工程本质，是把”终端本该承担的 NTN 能力”（定位、星历、时延与频偏预补偿）整包搬到了卫星上；而它真正的技术门槛，不在多普勒补偿这道算术题——这道题在地面也有——而在两件地面 eNB 从不需要操心的事：星上时钟够不够准，以及存量手机协议里那几个装不下星地尺度的字段。</strong></p>
+</blockquote>
+<p>　　两个补充判断，供读者参考：</p>
+<ul>
+<li><strong>不要低估”字段位宽”这一类约束。</strong> 本文最硬的三个边界——TA 的 11 bit、PRACH 的 Ncs 表、Cell ID 的 8 bit——都是协议设计时的取值，不是算法问题。它们决定了星上 eNB 的架构（一束一小区），而不是被架构决定。这类约束在 PPT 上永远看不出来，只有把数字代进去才会撞上。</li>
+<li><strong>本文所有数字都是几何推导的结果，不是实测。</strong> 轨道高度、频点、门限仰角一变，量级会变（但”多普勒变化率峰值在过顶、时延变化率峰值在窗边”这类结构性结论不变）。文中涉及的星上实现细节（两级补偿的分工、按波束设基准、SDR 路线）是基于物理约束和公开的星载基站工程实践做的推断，<strong>不是对 Starlink 具体实现的描述</strong>——SpaceX 未公开 D2C 星上 eNB 的实现细节。</li>
+</ul>
+</div><div class="tags"><a href="/tags/5GNR/">5GNR</a></div><div class="post-nav"><a class="next" href="/2026/09/23/starlink-d2c-sky-live/">北京 vs 喀纳斯：Starlink D2C 实时对照</a></div><h3 class="comments-title"><i class="fa fa-comments"></i>评论</h3><div id="tcomment"></div><script src="https://cdn.jsdelivr.net/npm/twikoo@1.7.19/dist/twikoo.all.min.js"></script><script>var twikooOptions = {
+  envId: 'https://ziyubiti.netlify.app/.netlify/functions/twikoo',
+  el: '#tcomment',
+  lang: 'zh-CN'
+};
+if ('') {
+  twikooOptions.region = '';
+}
+twikoo.init(twikooOptions);</script></div></div></div><div class="pure-u-1-4"><div id="sidebar"><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/6G/">6G</a><span class="category-list-count">22</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/AI/">AI</a><span class="category-list-count">23</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/Funny/">Funny</a><span class="category-list-count">9</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/Life/">Life</a><span class="category-list-count">7</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/Python/">Python</a><span class="category-list-count">7</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/Web/">Web</a><span class="category-list-count">2</span></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/Funny/" style="font-size: 15px;">Funny</a> <a href="/tags/5GNR/" style="font-size: 15px;">5GNR</a> <a href="/tags/LTE/" style="font-size: 15px;">LTE</a> <a href="/tags/NB-IoT/" style="font-size: 15px;">NB-IoT</a> <a href="/tags/DeepLearning/" style="font-size: 15px;">DeepLearning</a> <a href="/tags/AutoPilot/" style="font-size: 15px;">AutoPilot</a> <a href="/tags/MachineLearning/" style="font-size: 15px;">MachineLearning</a> <a href="/tags/Life/" style="font-size: 15px;">Life</a> <a href="/tags/Crab/" style="font-size: 15px;">Crab</a> <a href="/tags/Python/" style="font-size: 15px;">Python</a> <a href="/tags/Hexo/" style="font-size: 15px;">Hexo</a> <a href="/tags/crawl/" style="font-size: 15px;">crawl</a> <a href="/tags/RecSys/" style="font-size: 15px;">RecSys</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最新文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2026/09/23/starlink-d2c-onboard-enb/">Starlink 星上 eNB 的工程实现：把基站搬上天，到底要改什么</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/23/starlink-d2c-sky-live/">北京 vs 喀纳斯：Starlink D2C 实时对照</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/22/starlink-d2c-4g-continuous-coverage/">Starlink 卫星直连存量 4G 手机：如何实现连续覆盖</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/17/5gkeykdf/">5G 密钥派生链路：每级 KDF 的输入参数与所在实体</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/17/5gguomikdf/">5G 国密改造：完整密钥派生链路与 USIM 涉及范围</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/16/5gnrsecuritymode/">5G注册流程中的两个安全激活分界点</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/07/3gpp-ran1-126-6g-sync/">6G预研追踪系列：3GPP RAN1 #126次会议6G同步信号及信道讨论总结</a></li><li class="post-list-item"><a class="post-list-link" href="/2018/08/08/olympic/">北京奥运十周年祭</a></li><li class="post-list-item"><a class="post-list-link" href="/2018/07/25/hphone/">那些年买过的手机</a></li><li class="post-list-item"><a class="post-list-link" href="/2018/07/11/autopilot/">科普佳作 -- 读《第一本无人驾驶技术书》</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul><li><a href="http://blog.csdn.net/ziyubiti" title="ziyubiti's csdn blog" target="_blank" rel="noopener">ziyubiti's csdn blog</a></li><li><a href="https://github.com/ziyubiti" title="ziyubiti's github repository" target="_blank" rel="noopener">ziyubiti's github repository</a></li></ul></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">© <a href="/." rel="nofollow">ziyubiti 2006-2026.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a> Theme by<a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> maupassant.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=0.1.0" async></script><script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fancybox/2.1.5/jquery.fancybox.pack.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=0.1.0" async></script><link rel="stylesheet" type="text/css" href="/css/jquery.fancybox.css?v=0.1.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=0.1.0"></script><script type="text/javascript" src="/js/smartresize.js?v=0.1.0"></script></div></body></html>
