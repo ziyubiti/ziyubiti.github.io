@@ -1,0 +1,135 @@
+<!DOCTYPE html><html lang="#{config.language}"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content="关注机器学习、人工智能、网络爬虫、数据分析、web技术、无线通信等"><title>配电自动化FTU与主站的认证流程设计：SN、IMEI、IMSI与证书如何建立绑定 | ziyubiti</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=0.1.0"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.min.css"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/grids-responsive-min.css"><link rel="stylesheet" href="/fontawesome/css/all.min.css"><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><meta name="generator" content="Hexo 8.1.2"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">配电自动化FTU与主站的认证流程设计：SN、IMEI、IMSI与证书如何建立绑定</h1><a id="logo" href="/.">ziyubiti</a><p class="description">study hard everyday</p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-house"> 首页</i></a><a href="/categories/AI/"><i class="fa fa-brain"> AI</i></a><a href="/categories/Python/"><i class="fa fa-brands fa-python"> Python</i></a><a href="/categories/Web/"><i class="fa fa-globe"> Web</i></a><a href="/categories/6G/"><i class="fa fa-tower-broadcast"> 6G</i></a><a href="/categories/Funny/"><i class="fa fa-face-laugh"> Funny</i></a><a href="/archives/"><i class="fa fa-box-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">配电自动化FTU与主站的认证流程设计：SN、IMEI、IMSI与证书如何建立绑定</h1><div class="post-meta">Oct 22, 2026<span> | </span><span class="category"><a href="/categories/6G/">6G</a></span><script src="https://vercount.one/js" async></script><span id="busuanzi_container_page_pv"> | <span id="busuanzi_value_page_pv"></span><span> 次阅读</span></span></div><div class="post-content"><p>配电自动化终端（FTU）与主站之间走 IEC 60870-5-104 规约，而 104 协议本身<strong>没有任何认证字段</strong>——身份认证全部靠外加的安全层。这一层里最容易想错的问题就是：证书 SN、FTU 设备 SN、通信模块 IMEI、SIM 卡 IMSI、终端地址、主站设备号……这些标识之间，到底要建立多少条绑定关系？</p>
+<h2 id="一、先想清楚：标识之间不需要两两绑定"><a href="#一、先想清楚：标识之间不需要两两绑定" class="headerlink" title="一、先想清楚：标识之间不需要两两绑定"></a>一、先想清楚：标识之间不需要两两绑定</h2><p>如果让这些标识两两建立绑定关系，会形成 N(N−1)&#x2F;2 条关系网，而且每条关系的可信度取决于其中最弱的一环。<strong>这种思路在工程上必然失败</strong>，因为：</p>
+<ul>
+<li>SN 可以贴牌、可以复刻；</li>
+<li>IMEI 可以改写（模块刷机即可）；</li>
+<li>IMSI 可以拔卡换机——卡是合法的，设备未必是台账里那台。</li>
+</ul>
+<p>它们都只是”名称”，不是”凭据”。整个系统中唯一真正不可伪造的凭据只有一样：<strong>SM2 私钥</strong>——在安全芯片内生成、不可导出，私钥不出芯片。</p>
+<p>正确的形态是星型结构，而不是网状结构：</p>
+<div class="ftu-fig">
+  <svg viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+    <text x="340" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#c0392b">✗ 错误：两两绑定 → N(N−1)/2 条关系网</text>
+    <g font-size="11" fill="#555">
+      <circle cx="100" cy="80" r="26" fill="#ecf0f1" stroke="#95a5a6"/><text x="100" y="84" text-anchor="middle">证书SN</text>
+      <circle cx="260" cy="80" r="26" fill="#ecf0f1" stroke="#95a5a6"/><text x="260" y="84" text-anchor="middle">FTU SN</text>
+      <circle cx="420" cy="80" r="26" fill="#ecf0f1" stroke="#95a5a6"/><text x="420" y="84" text-anchor="middle">IMEI</text>
+      <circle cx="580" cy="80" r="26" fill="#ecf0f1" stroke="#95a5a6"/><text x="580" y="84" text-anchor="middle">IMSI</text>
+      <circle cx="180" cy="180" r="26" fill="#ecf0f1" stroke="#95a5a6"/><text x="180" y="184" text-anchor="middle">终端地址</text>
+      <circle cx="500" cy="180" r="26" fill="#ecf0f1" stroke="#95a5a6"/><text x="500" y="184" text-anchor="middle">主站号</text>
+    </g>
+    <g stroke="#c0392b" stroke-width="1" opacity="0.5">
+      <line x1="122" y1="90" x2="240" y2="88"/><line x1="282" y1="90" x2="400" y2="88"/>
+      <line x1="442" y1="90" x2="560" y2="88"/><line x1="112" y1="104" x2="168" y2="158"/>
+      <line x1="270" y1="104" x2="200" y2="158"/><line x1="430" y1="104" x2="490" y2="158"/>
+      <line x1="200" y1="180" x2="474" y2="180"/><line x1="115" y1="94" x2="410" y2="170"/>
+    </g>
+    <text x="340" y="240" text-anchor="middle" font-size="15" font-weight="bold" fill="#27ae60">✓ 正确：CA 一次性写进同一张证书 → 星型绑定</text>
+    <circle cx="340" cy="282" r="0.1" fill="none"/>
+    <g font-size="11">
+      <rect x="80" y="262" width="520" height="30" rx="6" fill="#eafaf1" stroke="#27ae60"/>
+      <text x="340" y="281" text-anchor="middle" fill="#1e8449" font-weight="bold">SM2 证书（唯一绑定中枢，私钥是唯一凭据）</text>
+    </g>
+  </svg>
+  <div class="ftu-cap">标识绑定的星型中枢结构</div>
+</div>
+
+<p>一句话概括：<strong>CA 在签发时把所有标识一次性写进同一张 SM2 证书（这是绑定动作）→ 双向握手验证私钥归属（这是认证动作）→ 逐项比对证书值与链路观察值、白名单值（这是校验动作）</strong>。</p>
+<h2 id="二、四层标识，各自的可信度完全不同"><a href="#二、四层标识，各自的可信度完全不同" class="headerlink" title="二、四层标识，各自的可信度完全不同"></a>二、四层标识，各自的可信度完全不同</h2><div class="ftu-fig">
+  <table class="ftu-table">
+    <thead><tr><th>层级</th><th>标识</th><th>防伪造能力</th><th>在认证中扮演的角色</th></tr></thead>
+    <tbody>
+      <tr><td>密码学凭据</td><td>SM2 私钥（安全芯片内）</td><td><strong>强</strong>（不出芯片）</td><td>唯一凭据，一切认证的根</td></tr>
+      <tr><td>证书标识</td><td>证书 SN / 序列号</td><td>中（CA 背书）</td><td>吊销与白名单的索引键</td></tr>
+      <tr><td>设备标识</td><td>FTU 设备 SN、模组 IMEI</td><td>弱（可贴牌/改写）</td><td>台账核对项，写进证书后获得 CA 背书</td></tr>
+      <tr><td>链路标识</td><td>IMSI、终端 104 地址、主站源发地址</td><td>弱（可换卡/可伪造）</td><td>运行期一致性检查项</td></tr>
+    </tbody>
+  </table>
+  <div class="ftu-cap">四层标识的可信度与角色分工</div>
+</div>
+
+<p>关键理解：弱标识本身不可信，但<strong>写进证书之后，就获得了 CA 背书</strong>——终端如果谎报 IMEI，与证书值冲突即被拒。绑定不是让标识之间互相证明，而是让它们都接受同一把私钥的管辖。</p>
+<h2 id="三、证书签发：绑定动作发生在投运之前"><a href="#三、证书签发：绑定动作发生在投运之前" class="headerlink" title="三、证书签发：绑定动作发生在投运之前"></a>三、证书签发：绑定动作发生在投运之前</h2><p>FTU 在出厂&#x2F;投运时，通过本地维护口向安全芯片注入证书申请信息，CA 核验台账后签发。证书关键字段与标识的对应关系：</p>
+<div class="ftu-fig">
+  <table class="ftu-table">
+    <thead><tr><th>证书字段</th><th>写入的标识</th><th>与谁核对</th></tr></thead>
+    <tbody>
+      <tr><td>Subject SN（证书序列号）</td><td>全网唯一，一机一证</td><td>网关白名单（证书 SN ↔ 白名单 SN）</td></tr>
+      <tr><td>Subject 通用名 / 设备标识扩展</td><td>FTU 设备 SN</td><td>设备台账</td></tr>
+      <tr><td>Subject 扩展（模组型号+硬件版本）</td><td>通信模组信息</td><td>模组台账 + 运营商 IMEISV 对账</td></tr>
+      <tr><td>Subject IP / 终端地址扩展</td><td>104 协议终端地址（SA）</td><td>网关白名单（证书地址 ↔ 白名单地址）</td></tr>
+      <tr><td>Issuer</td><td>电网行业 CA</td><td>证书链校验</td></tr>
+    </tbody>
+  </table>
+  <div class="ftu-cap">SM2 证书字段与标识的对应</div>
+</div>
+
+<p>注意 IMEI 的取舍：<strong>完整 IMEI 不写进证书</strong>。因为换通信模组在现场很常见，写进证书就意味着换模组必须重签证书，运维成本极高。折中方案是：证书放模组型号+硬件版本，完整 IMEI 进网关白名单，再利用运营商侧的 IMEISV 上报做外部对账。</p>
+<h2 id="四、认证动作：一次双向握手，验证全部"><a href="#四、认证动作：一次双向握手，验证全部" class="headerlink" title="四、认证动作：一次双向握手，验证全部"></a>四、认证动作：一次双向握手，验证全部</h2><p>FTU 上电后与安全接入网关做一次国密 SSL（GM&#x2F;T 0024）双向证书握手，此后所有 104 报文装在加密隧道里。网关侧在握手过程中对终端证书做<strong>八项校验</strong>：</p>
+<div class="ftu-fig">
+  <table class="ftu-table">
+    <thead><tr><th>#</th><th>校验项</th><th>性质</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>证书链：用根 CA 公钥验签终端证书</td><td rowspan="4" style="vertical-align:middle;text-align:center;"><strong>密码学校验</strong><br/>（验身份真实性）</td></tr>
+      <tr><td>2</td><td>有效期：NotBefore / NotAfter</td></tr>
+      <tr><td>3</td><td>吊销状态：查 CRL / OCSP</td></tr>
+      <tr><td>4</td><td>持钥证明：挑战-应答，验对方确实持有私钥</td></tr>
+      <tr><td>5</td><td>证书 SN ∈ 白名单（且不在吊销黑名单）</td><td rowspan="4" style="vertical-align:middle;text-align:center;"><strong>绑定校验</strong><br/>（验台账一致性）</td></tr>
+      <tr><td>6</td><td>证书内终端地址 ↔ 白名单地址 ↔ 链路实际地址</td></tr>
+      <tr><td>7</td><td>证书内模组信息 ↔ 终端上报 IMEI</td></tr>
+      <tr><td>8</td><td>链路层 IMSI ∈ 白名单（取自核心网/网关观测）</td></tr>
+    </tbody>
+  </table>
+  <div class="ftu-cap">网关侧八项校验：前四项验真，后四项验绑定</div>
+</div>
+
+<p>其中第 4 项（持钥证明）是本质：前面七项查的都是”纸面信息”，只有这一步验证对方真的持有那把不可导出的私钥。其余七项是把纸面信息互相勾稽，防止”合法的证书 + 错误的设备”组合。</p>
+<h2 id="五、主站侧：主站设备号用-104-标准字段承载"><a href="#五、主站侧：主站设备号用-104-标准字段承载" class="headerlink" title="五、主站侧：主站设备号用 104 标准字段承载"></a>五、主站侧：主站设备号用 104 标准字段承载</h2><p>反向的方向同样要认证——最危险的攻击恰恰是<strong>伪造主站向 FTU 下发遥控</strong>。主站设备号不需要自造字段，IEC 60870-5-104 的传送原因（COT）第二个字节本来就是<strong>源发地址（Originator Address, OA）</strong>，标准定义为”谁发起的这条命令”。</p>
+<p>FTU 侧的校验就一行逻辑：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">if (下行报文.COT.源发地址 ∉ 授权主站列表) then 拒绝 + 告警</span><br></pre></td></tr></table></figure>
+
+<p>再叠加主站侧 SM2 证书的握手认证，就构成双向：<strong>通道层双向证书（GM&#x2F;T 0024）解决”你是谁”，应用层 OA 校验解决”这条命令是不是被内部篡改或越权代发”</strong>。</p>
+<h2 id="六、运行期校验与换设备的原子操作"><a href="#六、运行期校验与换设备的原子操作" class="headerlink" title="六、运行期校验与换设备的原子操作"></a>六、运行期校验与换设备的原子操作</h2><p>握手只发生一次，绑定校验在运行期还要持续做：</p>
+<ul>
+<li><strong>每帧</strong>：SM3-HMAC + 序号&#x2F;时间戳防重放（或 SM4-GCM 加密认证一体）；</li>
+<li><strong>每连接</strong>：断链重连必须重新完整认证，不允许续用旧会话；</li>
+<li><strong>定期</strong>：证书链&#x2F;吊销状态重新核对，会话密钥按小时或按报文条数重协商。</li>
+</ul>
+<p>换通信模组或整台终端时，必须执行三步<strong>原子操作</strong>，顺序不能反：</p>
+<ol>
+<li><strong>吊销</strong>旧证书（上 CRL，全网秒级生效）；</li>
+<li><strong>补签</strong>新证书（新模组信息写入）；</li>
+<li><strong>更新</strong>网关白名单（新 SN &#x2F; IMEI &#x2F; IMSI）。</li>
+</ol>
+<p>只改台账不吊销证书是最常见的现场事故——旧私钥若已泄露，改台账等于没改。</p>
+<h2 id="七、容易踩的坑"><a href="#七、容易踩的坑" class="headerlink" title="七、容易踩的坑"></a>七、容易踩的坑</h2><ol>
+<li><strong>5G-AKA &#x2F; ONU 注册只证明”卡&#x2F;光路合法”，不证明”这台 FTU 是台账里那台”</strong>——入网认证是前提，不是终点，证书认证不可省。</li>
+<li><strong>必须双向，单向等于没做</strong>——只认证终端方向，挡不住伪造主站的遥控下发。</li>
+<li><strong>一机一证，别刷同一套密钥</strong>——同一份证书批量烧进几百台终端，一台被拆解提取，全网失守。</li>
+<li><strong>时钟依赖要谨慎</strong>——依赖时间戳防重放的方案要求 FTU 时钟同步（SNTP&#x2F;北斗），时钟漂移过大会大量误拒或打开重放窗口。可优先选用基于挑战序号（CSQ）的机制（IEC 62351-5 思路），不依赖时钟同步。</li>
+<li><strong>跨厂商互操作是隐性成本</strong>——IEC 62351-5&#x2F;6 落地比例低，认证扩展多按厂商私有实现，招标文件里必须写明认证机制与互通要求。</li>
+</ol>
+<h2 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h2><p>整个认证体系的逻辑就三句话：</p>
+<ul>
+<li><strong>绑定</strong>发生在签发时：CA 把所有标识写进同一张证书，星型结构，不做两两绑定；</li>
+<li><strong>认证</strong>发生在握手时：一次双向 SM2 证书握手 + 持钥证明，验证”私钥归属”这一个本质问题；</li>
+<li><strong>校验</strong>贯穿运行期：逐帧 HMAC 防篡改防重放，白名单持续勾稽，换设备三步原子操作。</li>
+</ul>
+<p>标识是名称，私钥是凭据，证书是绑定的载体——把这三者的职责分清，方案就不会走形。</p>
+<style>
+.ftu-fig { margin: 1.2em 0; }
+.ftu-cap { text-align: center; font-size: 0.85em; color: #888; margin-top: 0.4em; }
+.ftu-table { width: 100%; border-collapse: collapse; font-size: 0.92em; }
+.ftu-table th, .ftu-table td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+.ftu-table th { background: #f5f5f5; }
+.ftu-table tr:nth-child(even) td { background: #fafafa; }
+</style>
+</div><div class="tags"></div><div class="post-nav"><a class="next" href="/2026/09/23/starlink-d2c-onboard-enb/">Starlink系列（3）--Starlink 星上 eNB 的工程实现：把基站搬上天，到底要改什么</a></div><h3 class="comments-title"><i class="fa fa-comments"></i>评论</h3><div id="tcomment"></div><script src="https://cdn.jsdelivr.net/npm/twikoo@1.7.19/dist/twikoo.all.min.js"></script><script>var twikooOptions = {
+  envId: 'https://ziyubiti.netlify.app/.netlify/functions/twikoo',
+  el: '#tcomment',
+  lang: 'zh-CN'
+};
+if ('') {
+  twikooOptions.region = '';
+}
+twikoo.init(twikooOptions);</script></div></div></div><div class="pure-u-1-4"><div id="sidebar"><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/6G/">6G</a><span class="category-list-count">23</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/AI/">AI</a><span class="category-list-count">23</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/Funny/">Funny</a><span class="category-list-count">9</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/Life/">Life</a><span class="category-list-count">7</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/Python/">Python</a><span class="category-list-count">7</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/Web/">Web</a><span class="category-list-count">2</span></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/5GNR/" style="font-size: 15px;">5GNR</a> <a href="/tags/Funny/" style="font-size: 15px;">Funny</a> <a href="/tags/LTE/" style="font-size: 15px;">LTE</a> <a href="/tags/DeepLearning/" style="font-size: 15px;">DeepLearning</a> <a href="/tags/NB-IoT/" style="font-size: 15px;">NB-IoT</a> <a href="/tags/Life/" style="font-size: 15px;">Life</a> <a href="/tags/AutoPilot/" style="font-size: 15px;">AutoPilot</a> <a href="/tags/MachineLearning/" style="font-size: 15px;">MachineLearning</a> <a href="/tags/Crab/" style="font-size: 15px;">Crab</a> <a href="/tags/Python/" style="font-size: 15px;">Python</a> <a href="/tags/Hexo/" style="font-size: 15px;">Hexo</a> <a href="/tags/crawl/" style="font-size: 15px;">crawl</a> <a href="/tags/Starlink/" style="font-size: 15px;">Starlink</a> <a href="/tags/RecSys/" style="font-size: 15px;">RecSys</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最新文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2026/10/22/ftu-master-auth-binding/">配电自动化FTU与主站的认证流程设计：SN、IMEI、IMSI与证书如何建立绑定</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/23/starlink-d2c-onboard-enb/">Starlink系列（3）--Starlink 星上 eNB 的工程实现：把基站搬上天，到底要改什么</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/23/starlink-d2c-sky-live/">Starlink系列（2）--北京 vs 喀纳斯：Starlink D2C 实时对照</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/22/starlink-d2c-4g-continuous-coverage/">Starlink系列（1）--Starlink 卫星直连存量 4G 手机：如何实现连续覆盖</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/17/5gkeykdf/">5G 密钥派生链路：每级 KDF 的输入参数与所在实体</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/17/5gguomikdf/">5G 国密改造：完整密钥派生链路与 USIM 涉及范围</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/16/5gnrsecuritymode/">5G注册流程中的两个安全激活分界点</a></li><li class="post-list-item"><a class="post-list-link" href="/2026/09/07/3gpp-ran1-126-6g-sync/">6G预研追踪系列：3GPP RAN1 #126次会议6G同步信号及信道讨论总结</a></li><li class="post-list-item"><a class="post-list-link" href="/2018/08/08/olympic/">北京奥运十周年祭</a></li><li class="post-list-item"><a class="post-list-link" href="/2018/07/25/hphone/">那些年买过的手机</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul><li><a href="http://blog.csdn.net/ziyubiti" title="ziyubiti's csdn blog" target="_blank" rel="noopener">ziyubiti's csdn blog</a></li><li><a href="https://github.com/ziyubiti" title="ziyubiti's github repository" target="_blank" rel="noopener">ziyubiti's github repository</a></li></ul></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">© <a href="/." rel="nofollow">ziyubiti 2006-2026.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a> Theme by<a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> maupassant.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=0.1.0" async></script><script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fancybox/2.1.5/jquery.fancybox.pack.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=0.1.0" async></script><link rel="stylesheet" type="text/css" href="/css/jquery.fancybox.css?v=0.1.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=0.1.0"></script><script type="text/javascript" src="/js/smartresize.js?v=0.1.0"></script></div></body></html>
